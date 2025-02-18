@@ -5,12 +5,9 @@ const router = express.Router();
 
 router.post('/buildTransaction', async (req, res) => {
     try {
-        const { intent, params } = req.body; // Assuming intent and params are sent in the request body
-
-        if (!intent || !params) {
-            return res.status(400).json({ error: 'Missing intent or params' });
-        }
-
+        const { intent, params } = req.body;
+        if (intent.length == 0)
+            res.status(500).json({ error: "invalid request paramters" })
         const tx = await transactionBuilder(intent, params);
         res.json({ transaction: tx });
     } catch (error) {
