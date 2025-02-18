@@ -1,5 +1,6 @@
-import { Transaction } from "@mysten/sui/dist/cjs/transactions";
-import { SuiClient } from "@mysten/sui/dist/cjs/client";
+import { SuiClient } from '@mysten/sui/dist/cjs/client';
+import { Transaction } from '@mysten/sui/transactions';
+
 const createToken = async (
     client: SuiClient, // Sui client instance
     factoryAddress: string, // Address of the deployed token factory contract
