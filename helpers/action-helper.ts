@@ -2,52 +2,40 @@ import { SuiClient } from '@mysten/sui/dist/cjs/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { CreatePoolParams, CreateTokenParams, DepositPoolParams } from '../types/action-types';
 
+// Constants for commonly used coins
+const COIN_METADATA = {
+    "USDC": {
+        type: "0x5d4b302506645c37ff133b98c4b50a5ae14841659738d6d733d59d0d217a93bf::coin::COIN",
+        symbol: "USDC",
+        decimals: 6
+    },
+    "SUI": {
+        type: "0x2::sui::SUI",
+        symbol: "SUI",
+        decimals: 9
+    }
+    // Add other coins as needed
+} as const;
+
 export const createToken = async (
     tx: Transaction,
-    factoryAddress: string,
+    executorAddress: string,
     params: CreateTokenParams,
 ) => {
     const { name, symbol, decimal, description, initialSupply, iconUrl } = params;
     try {
-        // Call the factory contract's createToken function.  Replace with the actual function signature from your factory contract.
         const tokenDetails = tx.moveCall({
-            target: `${factoryAddress}::token_factory::create_token`, // Replace with the correct package and function name from your factory contract
-            arguments: [tx.pure.u64(initialSupply), tx.pure.u8(decimal), tx.pure.string(symbol), tx.pure.string(name), tx.pure.string(description), tx.pure.string(iconUrl)]
-        });
-        return {tx, tokenDetails}; // Return the built transaction
-
-    } catch (error) {
-        console.error("Error creating token:", error);
-        throw error;
-    }
-};
-export const createPool = async (
-    tx: Transaction,
-    params: CreatePoolParams
-
-) => {
-    const { coinTypeA, coinTypeB, coinTypeFee, exchange_address, pool_name, pool_icon_url, coin_a_symbol, coin_b_symbol, coin_a_url, coin_b_decimals, coin_a_decimals, coin_b_url, tick_spacing, fee_basis_points, current_sqrt_price, creation_fee } = params;
-    try {
-        //coin b will always be USDC
-        tx.moveCall({
-            target: `${exchange_address}::bluefin_spot::gateway::create_pool_v2`, // Replace with the correct package and function name from your factory contract
+            target: `${executorAddress}::executor::token_factory::create_token`,
             arguments: [
-                tx.pure.string(pool_name),
-                tx.pure.string(pool_icon_url),
-                tx.pure.string(coin_a_symbol),
-                tx.pure.string(coin_a_symbol),
-                tx.pure.u8(coin_a_decimals),
-                tx.pure.string(coin_a_url),
-                tx.pure.string(coin_b_symbol),
-                tx.pure.u8(coin_b_decimals),
-                tx.pure.string(coin_b_url),
-                tx.pure.u64(tick_spacing),
-                tx.pure.u64(fee_basis_points),
-                tx.pure.u128(current_sqrt_price),
-                tx.object(creation_fee)
+                tx.pure.u64(initialSupply), 
+                tx.pure.u8(decimal), 
+                tx.pure.string(symbol), 
+                tx.pure.string(name), 
+                tx.pure.string(description), 
+                tx.pure.string(iconUrl)
             ]
         });
-        return tx; // Return the built transaction
+        return {tx, tokenDetails};
 
     } catch (error) {
         console.error("Error creating token:", error);
@@ -55,44 +43,77 @@ export const createPool = async (
     }
 };
 
-export const depositLiquidity = async (
+export const createTokenAndPool = async (
     tx: Transaction,
-    params: DepositPoolParams,
+    executorAddress: string,
+    params: CreateTokenParams & Omit<CreatePoolParams, 'coin_type_b'> & {
+        coin_type_b?: string;  // Optional - if not provided, defaults to USDC
+    },
 ) => {
-    const {
-        exchange_address,
-        protocol_config_id,
-        pool_id,
-        position_id,
-        coin_a_id,
-        coin_b_id,
+    const { 
+        // Token params
+        name, 
+        symbol, 
+        decimal, 
+        description, 
+        initialSupply, 
+        iconUrl,
+        // Pool params
+        pool_icon_url,
+        tick_spacing,
+        fee_basis_points,
+        current_sqrt_price,
+        creation_fee,
         amount,
-        coin_a_max,
-        coin_b_max,
-        is_fixed_a,
-        coin_type_a,
-        coin_type_b
+        coin_b,
+        protocol_config_id,
+        // Optional params
+        coin_type_b = COIN_METADATA.USDC.type // Default to USDC if not provided
     } = params;
 
+    // Get coin metadata from our constants
+    const selectedCoin = coin_type_b === COIN_METADATA.USDC.type ? COIN_METADATA.USDC :
+                        coin_type_b === COIN_METADATA.SUI.type ? COIN_METADATA.SUI :
+                        { type: coin_type_b, symbol: "UNKNOWN", decimals: 9 }; // Default values for unknown coins
+
     try {
-        tx.moveCall({
-            target: `${exchange_address}::bluefin_spot::gateway::provide_liquidity_with_fixed_amount`,
-            typeArguments: [coin_type_a, coin_type_b], // Generic type arguments
+        const tokenAndPoolDetails = tx.moveCall({
+            target: `${executorAddress}::executor::create_token_and_pool`,
+            typeArguments: [selectedCoin.type],
             arguments: [
-                tx.object(protocol_config_id),  // Global config
-                tx.object(pool_id),            // Pool object
-                tx.object(position_id),        // Position NFT
-                tx.object(coin_a_id),          // Coin A to deposit
-                tx.object(coin_b_id),          // Coin B to deposit
-                tx.pure.u64(amount),           // Amount
-                tx.pure.u64(coin_a_max),       // Max coin A
-                tx.pure.u64(coin_b_max),       // Max coin B
-                tx.pure.bool(is_fixed_a)       // Is coin A amount fixed
+                tx.object('0x6'), // Clock object
+                tx.object(protocol_config_id),
+                tx.pure.u64(initialSupply),
+                tx.pure.u8(decimal),
+                tx.pure.string(symbol),
+                tx.pure.string(name),
+                tx.pure.string(description),
+                tx.pure.string(iconUrl),
+                tx.pure.string(pool_icon_url),
+                tx.object(coin_b),
+                tx.pure.string(selectedCoin.symbol),
+                tx.pure.u8(selectedCoin.decimals),
+                tx.pure.u32(Number(tick_spacing)),
+                tx.pure.u64(Number(fee_basis_points)),
+                tx.pure.u128(current_sqrt_price.toString()),
+                tx.object(creation_fee),
+                tx.pure.u64(Number(amount))
             ]
         });
-        return tx;
+        return {tx, tokenAndPoolDetails};
     } catch (error) {
-        console.error("Error depositing liquidity:", error);
+        console.error("Error creating token and pool:", error);
         throw error;
     }
 };
+
+// Helper function to get coin metadata object ID
+function getCoinMetadata(coinType: string): string {
+    // Well-known metadata objects
+    const METADATA_MAP: Record<string, string> = {
+        "0x2::sui::SUI": "0x0000000000000000000000000000000000000000000000000000000000000006",
+        // Add other coin types and their metadata object IDs as needed
+    };
+    
+    return METADATA_MAP[coinType] || "";
+}
