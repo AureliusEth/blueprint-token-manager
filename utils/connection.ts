@@ -6,11 +6,31 @@ import { NETWORK_CONFIG, COIN_METADATA } from '../config/constants';
 import { CreateTokenParams, CreatePoolParams, CreatePoolOnlyParams } from '../types/action-types';
 
 export async function setupMainnetConnection() {
-    const suiClient = new SuiClient({ url: getFullnodeUrl('mainnet') });
-    const keypair = Ed25519Keypair.fromSecretKey(process.env.MNEMONIC!);
-    const address = keypair.getPublicKey().toSuiAddress();
+    try {
+        const suiClient = new SuiClient({ url: getFullnodeUrl('mainnet') });
+        
+        // Test the connection with a simple query
+        await suiClient.getLatestCheckpointSequenceNumber().catch(error => {
+            logger.error('RPC Connection test failed:', {
+                error: error.message,
+                code: error.code,
+                status: error.status
+            });
+            throw error;
+        });
 
-    return { suiClient, keypair, address };
+        const keypair = Ed25519Keypair.fromSecretKey(process.env.MNEMONIC!);
+        const address = keypair.getPublicKey().toSuiAddress();
+
+        return { suiClient, keypair, address };
+    } catch (error) {
+        logger.error('Connection setup failed:', {
+            error: error.message,
+            code: (error as any).code,
+            status: (error as any).status
+        });
+        throw error;
+    }
 }
 
 export async function executeTransaction(suiClient: SuiClient, tx: Transaction, keypair: Ed25519Keypair) {
@@ -64,46 +84,58 @@ export function buildTransactionParams(
 
 export async function buildPoolOnlyParams(
     suiClient: SuiClient,
-    coinA: string,
-    coinB: string
+    address: string,
 ): Promise<CreatePoolOnlyParams> {
-    const [coinAObject, coinBObject] = await Promise.all([
-        suiClient.getObject({ id: coinA, options: { showType: true } }),
-        suiClient.getObject({ id: coinB, options: { showType: true } })
-    ]);
+    try {
+        // Get all coins owned by the address
+        const [suiCoins, usdcCoins] = await Promise.all([
+            suiClient.getCoins({
+                owner: address,
+                coinType: '0x2::sui::SUI'
+            }),
+            suiClient.getCoins({
+                owner: address,
+                coinType: COIN_METADATA.USDC.type
+            })
+        ]);
 
-    // Extract the inner type from "0x2::coin::Coin<T>"
-    const coinAType = coinAObject.data.type.match(/<(.+)>/)[1];
-    const coinBType = coinBObject.data.type.match(/<(.+)>/)[1];
+        // Find SUI coin with sufficient balance (> 1.2 SUI for fee + liquidity)
+        const suiCoin = suiCoins.data.find(coin => 
+            BigInt(coin.balance) > BigInt(1_200_000_000)
+        );
 
-    const [coinAMeta, coinBMeta] = await Promise.all([
-        suiClient.getCoinMetadata({ coinType: coinAType }),
-        suiClient.getCoinMetadata({ coinType: coinBType })
-    ]);
+        // Find USDC coin with sufficient balance
+        const usdcCoin = usdcCoins.data.find(coin => 
+            BigInt(coin.balance) > BigInt(1_000_000)  // Adjust based on your needs
+        );
 
-    // Minimum sqrt price in Q64.96 format (from Uniswap v3)
-    const MIN_SQRT_PRICE = BigInt('4295128739');
-    // Maximum sqrt price in Q64.96 format (from Uniswap v3)
-    const MAX_SQRT_PRICE = BigInt('1461446703485210103287273052203988822378723970342');
+        if (!suiCoin) {
+            throw new Error('No SUI coin with sufficient balance found');
+        }
+        if (!usdcCoin) {
+            throw new Error('No USDC coin with sufficient balance found');
+        }
 
-    const POOL_CREATION_FEE = BigInt(200_000_000); // Exactly 0.2 SUI in MIST
-
-    return {
-        coin_a: coinA,
-        coin_a_type: coinAType,
-        coin_a_symbol: coinAMeta.symbol,
-        coin_a_decimals: coinAMeta.decimals,
-        coin_a_url: "https://something.com",
-        coin_b: coinB,
-        coin_b_type: coinBType,
-        coin_b_symbol: coinBMeta.symbol,
-        coin_b_decimals: coinBMeta.decimals,
-        pool_icon_url: "https:something.com",
-        tick_spacing: BigInt(1),
-        fee_basis_points: BigInt(3000),
-        current_sqrt_price: MIN_SQRT_PRICE,
-        creation_fee: coinA,
-        amount: POOL_CREATION_FEE, // Use exact amount for pool creation fee
-        protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID
-    };
+        return {
+            coin_a: suiCoin.coinObjectId,
+            coin_a_type: '0x2::sui::SUI',
+            coin_a_symbol: 'SUI',
+            coin_a_decimals: 9,
+            coin_a_url: "https://something.com",
+            coin_b: usdcCoin.coinObjectId,  // Use fresh USDC coin
+            coin_b_type: COIN_METADATA.USDC.type,
+            coin_b_symbol: COIN_METADATA.USDC.symbol,
+            coin_b_decimals: COIN_METADATA.USDC.decimals,
+            pool_icon_url: "https:something.com",
+            tick_spacing: BigInt(1),
+            fee_basis_points: BigInt(3000),
+            current_sqrt_price: BigInt(4295128739),
+            creation_fee: suiCoin.coinObjectId,
+            amount: BigInt(200_000_000),
+            protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID
+        };
+    } catch (error) {
+        logger.error('Error in buildPoolOnlyParams:', { error });
+        throw error;
+    }
 }

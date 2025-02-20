@@ -172,11 +172,20 @@ async function deployToken() {
 
 async function createPool() {
     try {
-        const { suiClient, keypair } = await setupMainnetConnection();
-        const { suiCoin, usdcCoin } = await validateEnvironment();
-        const params = await buildPoolOnlyParams(suiClient, suiCoin, usdcCoin);
-        const tx = await transactionBuilder(['create_pool'], params, 'MAINNET');
+        const { suiClient, keypair, address } = await setupMainnetConnection();
+        const poolParams = await buildPoolOnlyParams(suiClient, address);
+        const tx = await transactionBuilder(['create_pool'], poolParams, 'MAINNET');
         return await executeTransaction(suiClient, tx, keypair);
+    } catch (error) {
+        logger.error('Pool creation failed:', { error });
+        throw error;
+    }
+}
+async function createPoolAndToken() {
+    try {
+        const { suiClient, keypair, address } = await setupMainnetConnection();
+        const { suiCoin, usdcCoin } = await validateEnvironment();
+
     } catch (error) {
         logger.error('Pool creation failed:', { error });
         throw error;
@@ -199,7 +208,7 @@ async function transactOnMainnet() {
             iconUrl: "https://test.com/icon.png",
             recipientAddress: address,
             // Pool params will be merged
-            ...(await buildPoolOnlyParams(suiClient, suiCoin, usdcCoin))
+            ...(await buildPoolOnlyParams(suiClient, address))
         };
 
         // Build transaction with multiple intents

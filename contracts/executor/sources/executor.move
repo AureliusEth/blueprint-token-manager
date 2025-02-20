@@ -120,9 +120,11 @@ module executor::executor {
         
         // Keep our tick calculation logic
         let tick_spacing_i32 = i32::from_u32(tick_spacing);
-        let lower_tick = i32::mul(i32::div(min_tick, tick_spacing_i32), tick_spacing_i32);
-        let upper_tick = i32::mul(i32::div(max_tick, tick_spacing_i32), tick_spacing_i32);
-
+        
+        // Adjust ticks to avoid boundary issues
+        let lower_tick = i32::add(i32::mul(i32::div(min_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
+        let upper_tick = i32::sub(i32::mul(i32::div(max_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
+        
         let lower_tick_bits = i32::abs_u32(lower_tick);
         let upper_tick_bits = i32::abs_u32(upper_tick);
 
