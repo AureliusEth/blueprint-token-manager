@@ -10,6 +10,7 @@ BluefinSpot = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-
 [patch."https://github.com/MystenLabs/sui.git"]
 MoveStdlib = { git = "https://github.com/MystenLabs/sui.git", rev = "mainnet-v1.35.2", subdir = "crates/sui-framework/packages/move-stdlib" }
 
+
 # For remote import, use the `{ git = "...", subdir = "...", rev = "..." }`.
 # Revision can be a branch, a tag, and a commit hash.
 # MyRemotePackage = { git = "https://some.remote/host.git", subdir = "remote/path", rev = "main" }

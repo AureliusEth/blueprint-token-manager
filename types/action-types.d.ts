@@ -4,8 +4,8 @@ export type CreateTokenParams = {
     decimal: number;
     description: string;
     initialSupply: number;
-    recipientAddress: string;
     iconUrl: string;
+    recipientAddress: string;
 };
 
 export type CreatePoolParams = {

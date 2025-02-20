@@ -9,6 +9,8 @@ module executor::executor {
     use executor::token_factory::{Self, MANAGED_TOKEN};
     use sui::sui::SUI;
 
+    const PROTOCOL_CONFIG_ID: address = @0x03db251ba509a8d5d8777b6338836082335d93eecbdd09a11e190a1cff51c352;
+
     /// Creates a token and immediately creates a liquidity pool for it
     #[allow(unused_variable)]
     public entry fun create_token_and_pool<CoinTypeB>(
@@ -22,8 +24,8 @@ module executor::executor {
         icon_url: String,
         pool_icon_url: vector<u8>,
         coin_b: Coin<CoinTypeB>,
-        coin_b_symbol: vector<u8>,    // Added parameter for coin B symbol
-        coin_b_decimals: u8,          // Added parameter for coin B decimals
+        coin_b_symbol: vector<u8>,
+        coin_b_decimals: u8,
         tick_spacing: u32,
         fee_basis_points: u64,
         current_sqrt_price: u128,
