@@ -11,19 +11,31 @@ describe('Token Creation and Pool Tests', () => {
     });
 
     describe('Create Token', () => {
-        const validTokenParams: CreateTokenParams = {
+        const validParams = {
             name: "Test Token",
             symbol: "TEST",
-            decimal: 9,
-            description: "A test token",
+            decimal: 6,
+            description: "Test Description",
             initialSupply: 1000000,
-            iconUrl: "https://example.com/icon.png"
+            iconUrl: "https://test.com/icon.png",
+            recipientAddress: "0xtest_address"
         };
 
-        it('should successfully create a token', async () => {
+        it('should create a token successfully', async () => {
             const result = await transactionBuilder(
                 ['create_token'],
-                validTokenParams
+                validParams,
+                'TESTNET'
+            );
+            expect(result).toBeDefined();
+            expect(result instanceof Transaction).toBeTruthy();
+        });
+
+        it('should handle multiple intents with same params', async () => {
+            const result = await transactionBuilder(
+                ['create_token', 'create_pool'],
+                { ...validParams, ...DEFAULT_TEST_PARAMS },
+                'TESTNET'
             );
             expect(result).toBeDefined();
             expect(result instanceof Transaction).toBeTruthy();
@@ -31,7 +43,7 @@ describe('Token Creation and Pool Tests', () => {
 
         it('should fail with invalid decimals', async () => {
             const invalidParams = {
-                ...validTokenParams,
+                ...validParams,
                 decimal: 19
             };
             await expect(

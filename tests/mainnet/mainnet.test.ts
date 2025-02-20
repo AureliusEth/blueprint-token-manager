@@ -6,11 +6,10 @@ import { Transaction } from '@mysten/sui/transactions';
 import { fromB64 } from '@mysten/bcs';
 import { createTokenAndPool } from '../../helpers/action-helper';
 import { NETWORK_CONFIG } from '../../config/constants';
+import { transactionBuilder } from '../../controllers/action-controller';
 
 describe('Mainnet Tests', () => {
     it('should create token and pool on mainnet', async () => {
-        const tx = new Transaction();
-        
         const params = {
             name: "Test Token",
             symbol: "TEST",
@@ -29,14 +28,13 @@ describe('Mainnet Tests', () => {
             protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID
         };
 
-        const result = await createTokenAndPool(
-            tx,
-            NETWORK_CONFIG.MAINNET.EXECUTOR_ADDRESS,
-            params
+        const tx = await transactionBuilder(
+            ['create_token', 'create_pool'],
+            params,
+            'MAINNET'
         );
 
-        // Verify transaction structure
-        expect(result.tx).toBeDefined();
-        expect(result.tokenAndPoolDetails).toBeDefined();
+        expect(tx).toBeDefined();
+        expect(tx instanceof Transaction).toBeTruthy();
     });
 }); 

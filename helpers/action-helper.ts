@@ -1,8 +1,17 @@
 import { Transaction, TransactionResult } from '@mysten/sui/transactions';
-import { CreatePoolParams, CreateTokenParams } from '../types/action-types';
+import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata } from '../types/action-types';
 import { COIN_METADATA, NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
 import { validateTokenParams, validateTokenAndPoolParams } from './validation';
+import * as fs from 'fs';
+import path from 'path';
+import { exec, ExecOptions } from 'child_process';
+import { promisify } from 'util';
+import { SuiClient } from '@mysten/sui/client';
+import { setupMainnetConnection } from '../utils/connection';
+
+const execAsync = promisify(exec);
+const SUI_PATH = '/opt/homebrew/bin/sui';
 
 export type TokenAndPoolResult = {
     tx: Transaction;
@@ -15,7 +24,7 @@ export type TokenResult = {
 };
 
 // Helper function to get selected coin metadata
-function getSelectedCoin(coinType: string) {
+export const getSelectedCoin = (coinType: string) => {
     if (coinType === COIN_METADATA.USDC.type) return COIN_METADATA.USDC;
     if (coinType === COIN_METADATA.SUI.type) return COIN_METADATA.SUI;
     
@@ -24,54 +33,84 @@ function getSelectedCoin(coinType: string) {
         symbol: "UNKNOWN",
         decimals: 9
     };
-}
+};
 
 export const createToken = async (
     tx: Transaction,
-    executorAddress: string,
+    _executorAddress: string,
     params: CreateTokenParams,
-): Promise<TokenResult> => {
+) => {
     try {
         validateTokenParams(params);
         
-        const { name, symbol, decimal, description, initialSupply, iconUrl } = params;
+        const currentDir = process.cwd();
+        const contractPath = path.resolve(currentDir, 'contracts/token_factory');
         
-        // Add explicit validation
-        if (decimal > 18) throw new Error("Decimals must be <= 18");
-        if (initialSupply <= 0) throw new Error("Initial supply must be > 0");
-        
-        // Try with smaller initial supply for testing
-        const testSupply = 1000; // Start small
+        process.chdir(contractPath);
 
-        const tokenDetails = tx.moveCall({
-            target: `${executorAddress}::token_factory::create_token`,
-            arguments: [
-                tx.pure.u64(initialSupply), 
-                tx.pure.u8(decimal), 
-                tx.pure.vector("u8", Array.from(Buffer.from(symbol, 'utf8'))),
-                tx.pure.vector("u8", Array.from(Buffer.from(name, 'utf8'))),
-                tx.pure.vector("u8", Array.from(Buffer.from(description, 'utf8'))),
-                tx.pure.string(iconUrl)
-            ]
-        });
+        try {
+            const { modules, dependencies } = await buildPackage();
 
-        // Add debug logging
-        logger.info('Token creation parameters:', { 
-            initialSupply,
-            decimal,
-            symbol: Buffer.from(symbol, 'utf8'),
-            name: Buffer.from(name, 'utf8'),
-            description: Buffer.from(description, 'utf8'),
-            iconUrl
-        });
+            const [upgradeCap] = tx.publish({
+                modules,
+                dependencies
+            });
 
-        logger.info('Token creation transaction built successfully', { symbol, name });
-        return { tx, tokenDetails };
+            tx.transferObjects([upgradeCap], tx.pure.address(params.recipientAddress));
+
+            logger.info('Token package publication prepared');
+            return { tx, tokenDetails: upgradeCap };
+        } finally {
+            process.chdir(currentDir);
+        }
     } catch (error) {
-        logger.error('Error creating token:', { error, params });
+        logger.error('Error preparing token package:', { error, params });
         throw error;
     }
 };
+
+export const setTokenMetadata = async (
+    tx: Transaction,
+    packageId: string,
+    params: TokenMetadata,
+    upgradeCap: string
+) => {
+    try {
+        // Validate inputs
+        if (!packageId?.startsWith('0x')) {
+            throw new Error('Invalid package ID format');
+        }
+        if (!upgradeCap?.startsWith('0x')) {
+            throw new Error('Invalid upgrade cap format');
+        }
+
+        tx.moveCall({
+            target: `${packageId}::token_factory::set_metadata`,
+            arguments: [
+                tx.object(upgradeCap),
+                tx.pure.string(params.symbol),
+                tx.pure.string(params.name),
+                tx.pure.string(params.description),
+                tx.pure.string(params.iconUrl),
+                tx.pure.u8(params.decimal)
+            ]
+        });
+
+        logger.info('Token metadata setup prepared');
+    } catch (error) {
+        logger.error('Error setting token metadata:', { error, params });
+        throw error;
+    }
+};
+
+async function buildPackage() {
+    logger.info('Building package...');
+    const buildResult = await execAsync('sui move build --skip-fetch-latest-git-deps');
+    logger.info('Build output:', buildResult.stdout);
+
+    const { stdout } = await execAsync('sui move build --dump-bytecode-as-base64');
+    return JSON.parse(stdout);
+}
 
 export const createTokenAndPool = async (
     tx: Transaction,
@@ -125,6 +164,62 @@ export const createTokenAndPool = async (
         return { tx, tokenAndPoolDetails };
     } catch (error) {
         logger.error('Error creating token and pool:', { error, params });
+        throw error;
+    }
+};
+
+export const createPoolOnly = async (
+    tx: Transaction,
+    executorAddress: string,
+    params: CreatePoolOnlyParams,
+): Promise<void> => {
+    try {
+        // Get the SuiClient from our connection utils
+        const { suiClient } = await setupMainnetConnection();
+
+        // Set pool creation fee to 0 for now
+        const POOL_CREATION_FEE = BigInt(0);
+        const POOL_LIQUIDITY = BigInt(1_000_000_000);  // 1 SUI for liquidity
+
+        // First split exact fee amount
+        const [coin_for_fee] = tx.splitCoins(tx.object(params.coin_a), [
+            tx.pure.u64(POOL_CREATION_FEE.toString())
+        ]);
+
+        // Then split liquidity amount
+        const [coin_for_pool] = tx.splitCoins(tx.object(params.coin_a), [
+            tx.pure.u64(POOL_LIQUIDITY.toString())
+        ]);
+
+        tx.moveCall({
+            target: `${executorAddress}::executor::create_pool_with_liquidity_only`,
+            typeArguments: [
+                params.coin_a_type, 
+                params.coin_b_type,
+                COIN_METADATA.SUI.type  // Use SUI for fee
+            ],
+            arguments: [
+                tx.object(NETWORK_CONFIG.MAINNET.CLOCK_ID),
+                tx.object(NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID),
+                coin_for_pool,
+                tx.object(params.coin_b),
+                tx.pure.string(params.coin_a_symbol),
+                tx.pure.u8(params.coin_a_decimals),
+                tx.pure.string(params.coin_a_url),
+                tx.pure.string(params.coin_b_symbol),
+                tx.pure.u8(params.coin_b_decimals),
+                tx.pure.string(params.pool_icon_url),
+                tx.pure.u32(Number(params.tick_spacing)),
+                tx.pure.u64(Number(params.fee_basis_points)),
+                tx.pure.u128(params.current_sqrt_price.toString()),
+                coin_for_fee,
+                tx.pure.u64(Number(params.amount))
+            ]
+        });
+
+        logger.info('Pool creation prepared');
+    } catch (error) {
+        logger.error('Error preparing pool:', { error, params });
         throw error;
     }
 };

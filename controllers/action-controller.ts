@@ -1,21 +1,13 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createToken, createTokenAndPool } from '../helpers/action-helper';
-import { CreatePoolParams, CreateTokenParams } from '../types/action-types';
+import { createPoolOnly, createToken, createTokenAndPool } from '../helpers/action-helper';
+import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams } from '../types/action-types';
 import { NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
 
-type IntentParams = {
-    'create_token': CreateTokenParams;
-    'create_token_and_pool': CreateTokenParams & CreatePoolParams;
-    'snipe_token': never;
-};
-
-type ValidIntent = keyof IntentParams;
-
-export const transactionBuilder = async <T extends ValidIntent>(
-    intent: T[],
-    params: IntentParams[T],
-    network: keyof typeof NETWORK_CONFIG = 'MAINNET'
+export const transactionBuilder = async (
+    intents: string[],  // Array of intent strings
+    params: any,        // Single params object containing all needed params
+    network: string = 'MAINNET'
 ): Promise<Transaction> => {
     try {
         const tx = new Transaction();
@@ -25,44 +17,47 @@ export const transactionBuilder = async <T extends ValidIntent>(
             throw new Error(`Invalid network: ${network}`);
         }
 
-        for (let i = 0; i < intent.length; i++) {
-            const currentIntent = intent[i];
-            logger.info(`Processing intent: ${currentIntent}`, { intentIndex: i });
+        if (!intents || intents.length === 0) {
+            throw new Error('No intents provided');
+        }
 
-            switch (currentIntent) {
+        // Process each intent using the same params object
+        for (const intent of intents) {
+            logger.info('Processing intent:', { intent, intentIndex: intents.indexOf(intent) });
+            
+            switch (intent) {
                 case 'create_token':
-                    const { tx: tokenTx } = await createToken(
+                    await createToken(
                         tx,
                         config.EXECUTOR_ADDRESS,
-                        params as CreateTokenParams
+                        params  // Each helper will extract what it needs
                     );
-                    Object.assign(tx, tokenTx);
                     break;
-
+                case 'create_pool':
+                    await createPoolOnly(
+                        tx,
+                        config.EXECUTOR_ADDRESS,
+                        params
+                    );
+                    break;
                 case 'create_token_and_pool':
-                    const { tx: poolTx } = await createTokenAndPool(
+                    await createTokenAndPool(
                         tx,
                         config.EXECUTOR_ADDRESS,
-                        params as CreateTokenParams & CreatePoolParams
+                        params
                     );
-                    Object.assign(tx, poolTx);
                     break;
-
                 default:
-                    throw new Error(`Unrecognized intent: ${currentIntent}`);
+                    throw new Error(`Unrecognized intent: ${intent}`);
             }
         }
 
-        logger.info('Transaction built successfully', { intents: intent });
+        logger.info('Transaction built successfully', { intents });
         return tx;
-
     } catch (error) {
-        logger.error('Error building transaction:', { error, intent, params });
+        logger.error('Error building transaction:', { error, intent: intents, params });
         throw new Error(`Transaction build failed: ${error.message}`);
     }
 };
 
-function assertNever(x: never): never {
-    throw new Error(`Unexpected intent: ${x}`);
-}
 
