@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "7662947CCC2356583B58D0270FEDA9D5DA4A18D6F005EB6D031D8EE5255B6FB5"
+manifest_digest = "949CA1BC2CA42F1B1123E84543E5EE3E16CB5322DA0D63E57C633102DE7E6443"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 dependencies = [
   { id = "BluefinSpot", name = "BluefinSpot" },
@@ -49,8 +49,6 @@ dependencies = [
 id = "MoveStdlib"
 source = { git = "https://github.com/MystenLabs/sui.git", rev = "mainnet-v1.35.2", subdir = "crates/sui-framework/packages/move-stdlib" }
 
-[env]
-
 [[move.package]]
 id = "Sui"
 source = { git = "https://github.com/MystenLabs/sui.git", rev = "mainnet-v1.35.2", subdir = "crates/sui-framework/packages/sui-framework" }
@@ -64,6 +62,8 @@ compiler-version = "1.42.2"
 edition = "2024.beta"
 flavor = "sui"
 
+[env]
+
 [env.testnet]
 chain-id = "4c78adac"
 original-published-id = "0x34bc2e8781462a017b4f97d806e35a568fcf22c5b4fe3fc3a94a6c2e5056e968"
@@ -72,6 +72,6 @@ published-version = "1"
 
 [env.mainnet]
 chain-id = "35834a8a"
-original-published-id = "0x7c884688fbe4e9d67579a50361f09ebcf59a55c3f589b20f207cfa555c0ba019"
-latest-published-id = "0x7c884688fbe4e9d67579a50361f09ebcf59a55c3f589b20f207cfa555c0ba019"
+original-published-id = "0x7dabafbb32f69298b4df04f7f89e7ba200f74230a950e592fffb02106f32aced"
+latest-published-id = "0x7dabafbb32f69298b4df04f7f89e7ba200f74230a950e592fffb02106f32aced"
 published-version = "1"

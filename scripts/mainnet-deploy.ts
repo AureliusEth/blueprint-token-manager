@@ -1,68 +1,22 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createTokenAndPool } from '../helpers/action-helper';
-import { NETWORK_CONFIG } from '../config/constants';
-import { fromBase64 } from '@mysten/bcs';
 import dotenv from 'dotenv';
 import { transactionBuilder } from '../controllers/action-controller';
-import { Secp256k1Keypair } from '@mysten/sui/keypairs/secp256k1';
-import { COIN_METADATA } from '../config/constants';
 import { logger } from '../utils/logger';
 import { validateEnvironment } from '../helpers/validation';
-import { setupMainnetConnection, executeTransaction, buildTransactionParams, buildPoolOnlyParams } from '../utils/connection';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import { createToken, setTokenMetadata } from '../helpers/action-helper';
+import { setupMainnetConnection, executeTransaction, buildPoolOnlyParams, buildTokenParams, buildPoolAndTokenParams } from '../utils/connection';
+import { createToken, mintToken, setTokenMetadata } from '../helpers/action-helper';
 
 dotenv.config();
 
-const execAsync = promisify(exec);
 
-// Add hardcoded values
-const PROTOCOL_CONFIG = {
-    poolCreationFeeTable: "0x92e15c7664162a7f16566c1d41f565318ced495c8182225553272df635d1c6d1"
-};
 
-async function publishPackage() {
-    try {
-        const contractPath = path.resolve(__dirname, '../contracts/executor');
-        
-        // Build the package first
-        logger.info('Building package...');
-        await execAsync('sui move build', { cwd: contractPath });
-
-        // Publish the package
-        logger.info('Publishing package...');
-        const { stdout, stderr } = await execAsync(
-            'sui client publish --gas-budget 200000000 --json',
-            { cwd: contractPath }
-        );
-
-        if (stderr) {
-            throw new Error(`Publication error: ${stderr}`);
-        }
-
-        const result = JSON.parse(stdout);
-        logger.info('Package published successfully:', {
-            digest: result.digest,
-            packageId: result.packageId
-        });
-
-        return result;
-    } catch (error) {
-        logger.error('Failed to publish package:', error);
-        throw error;
-    }
-}
-
+// change token to go through tx builder
 async function deployToken() {
     try {
         const { suiClient, keypair, address } = await setupMainnetConnection();
 
         // First transaction: Publish package
-        const publishTx = new Transaction();
-        publishTx.setGasBudget(50000000);  // Higher budget for package publish
-        const tokenResult = await createToken(publishTx, '', {
+        const params = {
             name: "Blue Token",
             symbol: "TESTB",
             decimal: 6,
@@ -70,8 +24,9 @@ async function deployToken() {
             initialSupply: 1_000_000_000,
             iconUrl: "https://test.com/icon.png",
             recipientAddress: address
-        });
+        };
 
+        const publishTx = await transactionBuilder(["create_token"], params)
         const publishResult = await executeTransaction(suiClient, publishTx, keypair);
         console.log("Full publish result:", JSON.stringify(publishResult, null, 2));
 
@@ -103,7 +58,7 @@ async function deployToken() {
         }, upgradeCapId);  // Pass the UpgradeCap ID
 
         const metadataResult = await executeTransaction(suiClient, metadataTx, keypair);
-        
+
         // Verify metadata creation
         type CreatedObject = {
             type: 'created';
@@ -116,8 +71,8 @@ async function deployToken() {
         }
 
         const metadataObject = metadataResult.objectChanges?.find(
-            change => change.type === 'created' && 
-            change.objectType?.includes(`${packageId}::token_factory::TokenMetadata`)
+            change => change.type === 'created' &&
+                change.objectType?.includes(`${packageId}::token_factory::TokenMetadata`)
         ) as CreatedObject | undefined;
 
         if (!metadataObject) {
@@ -131,8 +86,8 @@ async function deployToken() {
 
         // Find the TreasuryCap from the publish result
         const treasuryCap = publishResult.objectChanges?.find(
-            change => change.type === 'created' && 
-            change.objectType?.includes('TreasuryCap')
+            change => change.type === 'created' &&
+                change.objectType?.includes('TreasuryCap')
         ) as CreatedObject | undefined;
 
         if (!treasuryCap) {
@@ -155,7 +110,7 @@ async function deployToken() {
 
         const mintResult = await executeTransaction(suiClient, mintTx, keypair);
 
-        logger.info('Token deployment complete', { 
+        logger.info('Token deployment complete', {
             packageId,
             upgradeCapId,
             metadataId: metadataObject.objectId,
@@ -183,8 +138,43 @@ async function createPool() {
 }
 async function createPoolAndToken() {
     try {
+
+        // setup suiClient make a keypair from the user 
         const { suiClient, keypair, address } = await setupMainnetConnection();
-        const { suiCoin, usdcCoin } = await validateEnvironment();
+
+        //await createPool()
+        //await deployToken()
+        let token = await executeTransaction(suiClient, await transactionBuilder(["create_token"], buildTokenParams(suiClient, address)), keypair)
+
+        /// Get token values from chat context
+
+        const metadata = token.objectChanges?.find(
+            change => change.type === 'created' && change.objectType?.includes('CoinMetadata')
+        ) as { type: 'created', objectId: string } | undefined;
+        const metadataObject = await suiClient.getObject({
+            id: metadata.objectId,
+            options: { showContent: true }
+        });
+
+        const treasuryCap = token.objectChanges?.find(
+            change => change.type === 'created' && change.objectType?.includes('TreasuryCap')
+        ) as { type: 'created', objectId: string } | undefined;
+
+        const factory = token.objectChanges?.find(
+            change => change.type === 'published'
+        ) as { type: 'published', packageId: string } | undefined;
+        const tokenTx = await executeTransaction(suiClient, await transactionBuilder(["mint_token"], {
+            executor_address: factory.packageId,
+            treasury_cap: treasuryCap.objectId,
+            amount: BigInt(10 * 10 ** 10),
+            recipient: address  // Make sure this matches the type definition
+        }), keypair)
+        console.log("minted tokens",tokenTx)
+        const metadataFields = (metadataObject.data?.content as any)?.fields
+        metadataObject.data?.content.dataType
+
+        const poolTx = await executeTransaction(suiClient, await transactionBuilder(["create_pool"], await buildPoolAndTokenParams(suiClient, address, metadataObject)), keypair)
+        console.log("poolTx",poolTx)
 
     } catch (error) {
         logger.error('Pool creation failed:', { error });
@@ -192,46 +182,10 @@ async function createPoolAndToken() {
     }
 }
 
-async function transactOnMainnet() {
-    try {
-        const { suiClient, keypair, address } = await setupMainnetConnection();
-        const { suiCoin, usdcCoin } = await validateEnvironment();
-
-        // Combine all params into one object
-        const params = {
-            // Token params
-            name: "Test Token",
-            symbol: "TEST",
-            decimal: 6,
-            description: "Test Token for Pool Creation",
-            initialSupply: 1_000_000_000,
-            iconUrl: "https://test.com/icon.png",
-            recipientAddress: address,
-            // Pool params will be merged
-            ...(await buildPoolOnlyParams(suiClient, address))
-        };
-
-        // Build transaction with multiple intents
-        logger.info('Building multi-intent transaction...');
-        const tx = await transactionBuilder(
-            ['create_token', 'create_pool'],
-            params,
-            'MAINNET'
-        );
-
-        const result = await executeTransaction(suiClient, tx, keypair);
-        logger.info('Multi-intent transaction successful:', { effects: result.effects });
-
-        return result;
-    } catch (error) {
-        logger.error('Multi-intent transaction failed:', { error });
-        throw error;
-    }
-}
 
 // Update the main execution
 if (require.main === module) {
-    createPool()
+    createPoolAndToken()
         .then(result => {
             logger.info('Token deployment completed:', result);
             process.exit(0);
@@ -242,5 +196,5 @@ if (require.main === module) {
         });
 }
 
-export { deployToken, createPool, transactOnMainnet };
+export { deployToken, createPool, createPoolAndToken };
 

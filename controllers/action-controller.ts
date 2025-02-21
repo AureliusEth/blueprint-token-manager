@@ -1,5 +1,5 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createPoolOnly, createToken, createTokenAndPool } from '../helpers/action-helper';
+import { createPoolOnly, createToken, createTokenAndPool, mintToken } from '../helpers/action-helper';
 import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams } from '../types/action-types';
 import { NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
@@ -12,7 +12,7 @@ export const transactionBuilder = async (
     try {
         const tx = new Transaction();
         const config = NETWORK_CONFIG[network];
-        
+
         if (!config) {
             throw new Error(`Invalid network: ${network}`);
         }
@@ -24,13 +24,20 @@ export const transactionBuilder = async (
         // Process each intent using the same params object
         for (const intent of intents) {
             logger.info('Processing intent:', { intent, intentIndex: intents.indexOf(intent) });
-            
+
             switch (intent) {
                 case 'create_token':
                     await createToken(
                         tx,
                         config.EXECUTOR_ADDRESS,
                         params  // Each helper will extract what it needs
+                    );
+                    break;
+                case 'mint_token':
+                    await mintToken(
+                        tx,
+                        params.executor_address,
+                        params  
                     );
                     break;
                 case 'create_pool':

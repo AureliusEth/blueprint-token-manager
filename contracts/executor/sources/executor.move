@@ -1,6 +1,6 @@
 module executor::executor {
     use sui::tx_context;
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self, Coin, zero};
     use sui::clock::Clock;
     use sui::transfer;
     use std::ascii::{Self, String};
@@ -91,7 +91,7 @@ module executor::executor {
 //     transfer::public_transfer(position, creator);
 // }
 
-    public entry fun create_pool_with_liquidity_only<CoinTypeA, CoinTypeB, CoinTypeFee>(
+    public entry fun create_pool_with_liquidity_only<CoinTypeA, CoinTypeB>(
         clock: &Clock,
         protocol_config: &mut GlobalConfig,
         coin_a: Coin<CoinTypeA>,
@@ -105,13 +105,12 @@ module executor::executor {
         tick_spacing: u32,
         fee_basis_points: u64,
         current_sqrt_price: u128,
-        creation_fee: Coin<CoinTypeFee>,
         amount: u64,
         ctx: &mut tx_context::TxContext
     ) {
         let coin_a_balance = coin::into_balance(coin_a);
         let coin_b_balance = coin::into_balance(coin_b);
-        let creation_fee_balance = coin::into_balance(creation_fee);
+        let creation_fee_balance = coin::into_balance(coin::zero<SUI>(ctx));
         
         // Get range from config but use smaller test values for now
         let (_min_tick, _max_tick) = config::get_tick_range(protocol_config);
@@ -129,7 +128,7 @@ module executor::executor {
         let upper_tick_bits = i32::abs_u32(upper_tick);
 
         let (_pool_id, position, _min_a, _min_b, remaining_balance_a, remaining_balance_b) = 
-            pool::create_pool_with_liquidity<CoinTypeA, CoinTypeB, CoinTypeFee>(
+            pool::create_pool_with_liquidity<CoinTypeA, CoinTypeB, SUI>(
                 clock,
                 protocol_config,
                 coin_a_symbol,

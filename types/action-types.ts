@@ -8,6 +8,13 @@ export type TokenMetadata = {
     decimal: number;
 };
 
+export type mintTokenParams = {
+    executor_address: string;
+    treasury_cap: string;
+    amount: string;
+    recipient: string;
+};
+
 export type CreateTokenParams = TokenMetadata & {
     initialSupply: number;
     recipientAddress: string;

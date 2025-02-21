@@ -1,5 +1,5 @@
-import { Transaction, TransactionResult } from '@mysten/sui/transactions';
-import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata } from '../types/action-types';
+import { ObjectRef, Transaction, TransactionResult } from '@mysten/sui/transactions';
+import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata, mintTokenParams } from '../types/action-types';
 import { COIN_METADATA, NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
 import { validateTokenParams, validateTokenAndPoolParams } from './validation';
@@ -27,7 +27,7 @@ export type TokenResult = {
 export const getSelectedCoin = (coinType: string) => {
     if (coinType === COIN_METADATA.USDC.type) return COIN_METADATA.USDC;
     if (coinType === COIN_METADATA.SUI.type) return COIN_METADATA.SUI;
-    
+
     return {
         type: coinType,
         symbol: "UNKNOWN",
@@ -42,10 +42,11 @@ export const createToken = async (
 ) => {
     try {
         validateTokenParams(params);
-        
+
         const currentDir = process.cwd();
         const contractPath = path.resolve(currentDir, 'contracts/token_factory');
-        
+
+        tx.setGasBudget(50000000);  // Higher budget for package publish
         process.chdir(contractPath);
 
         try {
@@ -68,6 +69,34 @@ export const createToken = async (
         throw error;
     }
 };
+export const mintToken = async (
+    tx: Transaction,
+    _executorAddress: string,
+    params: mintTokenParams,) => {
+    try {
+
+        if (!_executorAddress?.startsWith('0x')) {
+            throw new Error('Invalid package ID format');
+        }
+        if (!params.treasury_cap?.startsWith('0x')) {
+            throw new Error('Invalid treasury cap format');
+        }
+        tx.moveCall({
+            target: `${_executorAddress}::token_factory::mint`,
+            arguments: [
+                tx.object(params.treasury_cap),
+                tx.pure.u64(params.amount),
+                tx.pure.address(params.recipient),
+            ]
+        });
+
+        logger.info('Token minting prepared');
+    }
+    catch (error) {
+        logger.error('Error setting minting:', { error, params });
+        throw error;
+    }
+}
 
 export const setTokenMetadata = async (
     tx: Transaction,
@@ -122,7 +151,7 @@ export const createTokenAndPool = async (
     try {
         validateTokenAndPoolParams(params);
 
-        const { 
+        const {
             name, symbol, decimal, description, initialSupply, iconUrl,
             pool_icon_url, tick_spacing, fee_basis_points, current_sqrt_price,
             creation_fee, amount, coin_b, protocol_config_id,
@@ -174,19 +203,9 @@ export const createPoolOnly = async (
     params: CreatePoolOnlyParams,
 ): Promise<void> => {
     try {
-        // Get the SuiClient from our connection utils
-        const { suiClient } = await setupMainnetConnection();
-
-        // Set pool creation fee to 0 for now
-        const POOL_CREATION_FEE = BigInt(0);
         const POOL_LIQUIDITY = BigInt(1_000_000_000);  // 1 SUI for liquidity
-
-        // First split exact fee amount
-        const [coin_for_fee] = tx.splitCoins(tx.object(params.coin_a), [
-            tx.pure.u64(POOL_CREATION_FEE.toString())
-        ]);
-
-        // Then split liquidity amount
+        
+        // Split liquidity amount from coin_a
         const [coin_for_pool] = tx.splitCoins(tx.object(params.coin_a), [
             tx.pure.u64(POOL_LIQUIDITY.toString())
         ]);
@@ -194,9 +213,8 @@ export const createPoolOnly = async (
         tx.moveCall({
             target: `${executorAddress}::executor::create_pool_with_liquidity_only`,
             typeArguments: [
-                params.coin_a_type, 
+                params.coin_a_type,
                 params.coin_b_type,
-                COIN_METADATA.SUI.type  // Use SUI for fee
             ],
             arguments: [
                 tx.object(NETWORK_CONFIG.MAINNET.CLOCK_ID),
@@ -212,7 +230,6 @@ export const createPoolOnly = async (
                 tx.pure.u32(Number(params.tick_spacing)),
                 tx.pure.u64(Number(params.fee_basis_points)),
                 tx.pure.u128(params.current_sqrt_price.toString()),
-                coin_for_fee,
                 tx.pure.u64(Number(params.amount))
             ]
         });

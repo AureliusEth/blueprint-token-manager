@@ -26,8 +26,8 @@ module token_factory::token_factory {
 		let (treasury_cap, metadata) = coin::create_currency(
 				witness,
 				6, // Default decimals
-				b"TOKEN", // Placeholder symbol
-				b"Token", // Placeholder name
+				b"WAS", // Placeholder symbol
+				b"Wasabi", // Placeholder name
 				b"", // Empty description
 				option::none(), // No URL yet
 				ctx
