@@ -57,10 +57,10 @@ export async function executeTransaction(suiClient: SuiClient, tx: Transaction, 
 
     return finalTx;
 }
-export function buildTokenParams(suiClient: SuiClient, address) {
+export function buildTokenParams(suiClient: SuiClient, address: string) {
     return {
-        name: "Blue Token",
-        symbol: "TESTB",
+        name: "HELP Token",
+        symbol: "HELP",
         decimal: 6,
         description: "Test Token for Pool Creation",
         initialSupply: 1_000_000_000,
@@ -107,12 +107,12 @@ export async function buildPoolAndTokenParams(
 
         // Find Token coin with sufficient balance
         const userCoin = userCoins.data.find(coin =>
-            BigInt(coin.balance) > BigInt(1)
+            BigInt(coin.balance) > BigInt(5_000_000)
         );
 
         // Find USDC coin with sufficient balance
         const usdcCoin = usdcCoins.data.find(coin =>
-            BigInt(coin.balance) > BigInt(1_000_000)  // Adjust based on your needs
+            BigInt(coin.balance) > BigInt(5_000_000)  // Adjust based on your needs
         );
 
         if (!suiCoin) {
@@ -127,6 +127,11 @@ export async function buildPoolAndTokenParams(
         }
 
         /////// TODO get the users created token and provide liq
+        const tokenPriceA = 1;
+        const tokenPriceB = 1;
+        const price = BigInt(Math.sqrt(tokenPriceA*tokenPriceB))
+        // Use a more conservative sqrt_price that's well within bounds
+        const sqrt_price = BigInt("18446744073709551616") // This represents ~0.989949 in Q64.96
         return {
             coin_a: userCoin.coinObjectId,
             coin_a_type: coinTypeA,
@@ -140,13 +145,14 @@ export async function buildPoolAndTokenParams(
             pool_icon_url: "https:something.com",
             tick_spacing: BigInt(1),
             fee_basis_points: BigInt(3000),
-            current_sqrt_price: BigInt(4295128739),
+            current_sqrt_price: sqrt_price,
             creation_fee: suiCoin.coinObjectId,
-            amount: BigInt(200_000_000),
+            amount_a: BigInt(1 * 10 ** 6),  // 10 tokens with 6 decimals
+            amount_b: BigInt(1 * 10 ** 6),  // 10 USDC with 6 decimals
             protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID
         };
     } catch (error) {
-        logger.error('Error in buildPoolOnlyParams:', { error });
+        logger.error('Error in buildPoolAndTokenParams:', { error });
         throw error;
     }
 }
@@ -198,13 +204,68 @@ export async function buildPoolOnlyParams(
             pool_icon_url: "https:something.com",
             tick_spacing: BigInt(1),
             fee_basis_points: BigInt(3000),
-            current_sqrt_price: BigInt(4295128739),
+            current_sqrt_price: BigInt("1000000000000000000"), // 1e18, a common value for price 1.0
             creation_fee: suiCoin.coinObjectId,
-            amount: BigInt(200_000_000),
+            amount_a: BigInt(2 * 10 ** 6),  // 10 SUI with 9 decimals
+            amount_b: BigInt(2 * 10 ** 6),  // 10 USDC with 6 decimals
             protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID
         };
     } catch (error) {
         logger.error('Error in buildPoolOnlyParams:', { error });
         throw error;
     }
+}
+
+export async function buildTokenAndPoolTestParams(suiClient: SuiClient, address: string) {
+    // Get USDC and SUI coins owned by the address
+    const [usdcCoins, suiCoins] = await Promise.all([
+        suiClient.getCoins({
+            owner: address,
+            coinType: COIN_METADATA.USDC.type
+        }),
+        suiClient.getCoins({
+            owner: address,
+            coinType: COIN_METADATA.SUI.type
+        })
+    ]);
+
+    // Find USDC coin with sufficient balance
+    const usdcCoin = usdcCoins.data.find(coin =>
+        BigInt(coin.balance) > BigInt(1_000_000)  // Adjust based on your needs
+    );
+
+    // Find SUI coin with sufficient balance for creation fee
+    const suiCoin = suiCoins.data.find(coin =>
+        BigInt(coin.balance) > BigInt(1_200_000_000)  // 1.2 SUI for fee + buffer
+    );
+
+    if (!usdcCoin) {
+        throw new Error('No USDC coin with sufficient balance found');
+    }
+    if (!suiCoin) {
+        throw new Error('No SUI coin with sufficient balance found');
+    }
+
+    return {
+        // Token parameters
+        name: "Blue Fish Token",
+        symbol: "BFISHT",
+        decimal: 6,
+        description: "Test Token for Pool Creation",
+        initialSupply: 1_000_000_000,
+        iconUrl: "https://test.com/icon.png",
+        recipientAddress: address,
+        
+        // Pool parameters
+        pool_icon_url: "https://test.com/pool-icon.png",
+        tick_spacing: BigInt(1),
+        fee_basis_points: BigInt(3000),
+        current_sqrt_price: BigInt(4295128739),
+        amount_a: BigInt(10 * 10 ** 6),  // 10 tokens with 6 decimals
+        amount_b: BigInt(10 * 10 ** 6),  // 10 USDC with 6 decimals
+        protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID,
+        coin_b: usdcCoin.coinObjectId,
+        coin_b_type: COIN_METADATA.USDC.type,
+        creation_fee: suiCoin.coinObjectId
+    };
 }

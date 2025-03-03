@@ -15,5 +15,6 @@ export const DEFAULT_TEST_PARAMS: CreateTokenParams & CreatePoolParams = {
     fee_basis_points: BigInt(30),
     current_sqrt_price: BigInt(1000000),
     creation_fee: "0x456",
-    amount: BigInt(1000)
+    amount_a: BigInt(1000),
+    amount_b: BigInt(1000)
 }; 

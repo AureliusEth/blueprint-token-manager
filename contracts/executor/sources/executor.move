@@ -31,7 +31,7 @@ module executor::executor {
 //     fee_basis_points: u64,
 //     current_sqrt_price: u128,
 //     creation_fee: Coin<SUI>,
-//     amount: u64,
+//     amount_a: u64,
 //     ctx: &mut tx_context::TxContext,
 // ) {
 //     // === Step 1: Create the Token using token_factory ===
@@ -73,7 +73,7 @@ module executor::executor {
 //             upper_tick_bits,
 //             coin_a_balance,
 //             coin_b_balance,
-//             amount,
+//             amount_a,
 //             true,
 //             ctx
 //         );
@@ -82,13 +82,13 @@ module executor::executor {
 //     let remaining_coins_a = coin::from_balance(remaining_balance_a, ctx);
 //     let remaining_coins_b = coin::from_balance(remaining_balance_b, ctx);
 //
-//     // Transfer assets to the creator
-//     let creator = tx_context::sender(ctx);
-//     transfer::public_transfer(treasury_cap, creator);
-//     transfer::public_transfer(metadata, creator);
-//     transfer::public_transfer(remaining_coins_a, creator);
-//     transfer::public_transfer(remaining_coins_b, creator);
-//     transfer::public_transfer(position, creator);
+//     // Transfer assets to the sender
+//     let sender = tx_context::sender(ctx);
+//     transfer::public_transfer(treasury_cap, sender);
+//     transfer::public_transfer(metadata, sender);
+//     transfer::public_transfer(remaining_coins_a, sender);
+//     transfer::public_transfer(remaining_coins_b, sender);
+//     transfer::public_transfer(position, sender);
 // }
 
     public entry fun create_pool_with_liquidity_only<CoinTypeA, CoinTypeB>(
@@ -105,29 +105,19 @@ module executor::executor {
         tick_spacing: u32,
         fee_basis_points: u64,
         current_sqrt_price: u128,
-        amount: u64,
+        amount_a: u64,
+        amount_b: u64,
         ctx: &mut tx_context::TxContext
-    ) {
+    ) : ID {
         let coin_a_balance = coin::into_balance(coin_a);
         let coin_b_balance = coin::into_balance(coin_b);
         let creation_fee_balance = coin::into_balance(coin::zero<SUI>(ctx));
         
         // Get range from config but use smaller test values for now
-        let (_min_tick, _max_tick) = config::get_tick_range(protocol_config);
-        let min_tick = i32::from_u32(100);  // Small test value
-        let max_tick = i32::from_u32(200);  // Small test value
-        
-        // Keep our tick calculation logic
-        let tick_spacing_i32 = i32::from_u32(tick_spacing);
-        
-        // Adjust ticks to avoid boundary issues
-        let lower_tick = i32::add(i32::mul(i32::div(min_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
-        let upper_tick = i32::sub(i32::mul(i32::div(max_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
-        
-        let lower_tick_bits = i32::abs_u32(lower_tick);
-        let upper_tick_bits = i32::abs_u32(upper_tick);
-
-        let (_pool_id, position, _min_a, _min_b, remaining_balance_a, remaining_balance_b) = 
+let lower_tick_bits: u32 = 4294960364; // For -6932 as i32 (0.5x price)
+let upper_tick_bits: u32 = 6932;       // For 6932 as i32 (2x price)        // Get protocol's tick range
+        // Use a much wider range to ensure it includes the current price
+        let (pool_id, position, _min_a, _min_b, remaining_balance_a, remaining_balance_b) = 
             pool::create_pool_with_liquidity<CoinTypeA, CoinTypeB, SUI>(
                 clock,
                 protocol_config,
@@ -147,18 +137,78 @@ module executor::executor {
                 upper_tick_bits,
                 coin_a_balance,
                 coin_b_balance,
-                amount,
-                true,
+                amount_a,
+                false,
                 ctx
             );
 
+        // Convert remaining balances back to coins
         let remaining_coins_a = coin::from_balance(remaining_balance_a, ctx);
         let remaining_coins_b = coin::from_balance(remaining_balance_b, ctx);
 
-        let creator = tx_context::sender(ctx);
-        transfer::public_transfer(remaining_coins_a, creator);
-        transfer::public_transfer(remaining_coins_b, creator);
-        transfer::public_transfer(position, creator);
+        // Transfer everything to sender
+        let sender = tx_context::sender(ctx);
+        transfer::public_transfer(remaining_coins_a, sender);
+        transfer::public_transfer(remaining_coins_b, sender);
+        transfer::public_transfer(position, sender);
+        return pool_id
+    }
+
+    public entry fun add_liquidity<CoinTypeA, CoinTypeB>(
+        clock: &Clock,
+        protocol_config: &mut GlobalConfig,
+        pool: &mut pool::Pool<CoinTypeA, CoinTypeB>,
+        coin_a: Coin<CoinTypeA>,
+        coin_b: Coin<CoinTypeB>,
+        amount: u64,
+        ctx: &mut tx_context::TxContext
+    ) {
+        let coin_a_balance = coin::into_balance(coin_a);
+        let coin_b_balance = coin::into_balance(coin_b);
+        
+        // Get range from config but use smaller test values for now
+        let (_min_tick, _max_tick) = config::get_tick_range(protocol_config);
+        let min_tick = i32::from_u32(100);  // Small test value
+        let max_tick = i32::from_u32(200);  // Small test value
+        let tick_spacing_i32 = i32::from_u32(1);
+        
+        // Adjust ticks to avoid boundary issues
+        let lower_tick = i32::add(i32::mul(i32::div(min_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
+        let upper_tick = i32::sub(i32::mul(i32::div(max_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
+        
+
+let lower_tick_bits: u32 = 4294922296; // Wider negative range
+let upper_tick_bits: u32 = 45000;      // Wider positive range
+
+        // Create pool and get pool object
+
+        // Add additional liquidity
+        let mut position = pool::open_position<CoinTypeA, CoinTypeB>(
+            protocol_config,
+            pool,
+            lower_tick_bits,
+            upper_tick_bits,
+            ctx
+        );
+        let (min_a, min_b, rem_a, rem_b) = pool::add_liquidity_with_fixed_amount<CoinTypeA, CoinTypeB>(
+            clock,
+            protocol_config,
+            pool,
+            &mut position,
+            coin_a_balance,
+            coin_b_balance,
+            amount,
+            false);
+
+        // Convert remaining balances back to coins
+        let remaining_coins_a = coin::from_balance(rem_a, ctx);
+        let remaining_coins_b = coin::from_balance(rem_b, ctx);
+
+        // Transfer everything to sender
+        let sender = tx_context::sender(ctx);
+        transfer::public_transfer(remaining_coins_a, sender);
+        transfer::public_transfer(remaining_coins_b, sender);
+        transfer::public_transfer(position, sender);
     }
 }
 

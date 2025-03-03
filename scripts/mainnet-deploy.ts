@@ -3,8 +3,9 @@ import dotenv from 'dotenv';
 import { transactionBuilder } from '../controllers/action-controller';
 import { logger } from '../utils/logger';
 import { validateEnvironment } from '../helpers/validation';
-import { setupMainnetConnection, executeTransaction, buildPoolOnlyParams, buildTokenParams, buildPoolAndTokenParams } from '../utils/connection';
+import { setupMainnetConnection, executeTransaction, buildPoolOnlyParams, buildTokenParams, buildPoolAndTokenParams, buildTokenAndPoolTestParams } from '../utils/connection';
 import { createToken, mintToken, setTokenMetadata } from '../helpers/action-helper';
+import { SuiClient } from '@mysten/sui/dist/cjs/client';
 
 dotenv.config();
 
@@ -136,6 +137,37 @@ async function createPool() {
         throw error;
     }
 }
+async function createPoolAndTokenTest() {
+    try {
+        // Setup connection
+        const { suiClient, keypair, address } = await setupMainnetConnection();
+
+        // Build parameters
+        const params = await buildTokenAndPoolTestParams(suiClient, address);
+
+        // Create transaction
+        const tx = await transactionBuilder(["create_test_token_and_pool"], params, 'MAINNET');
+
+        // Execute transaction
+        const result = await executeTransaction(suiClient, tx, keypair);
+
+        // Log results
+        logger.info('Token and pool creation completed', {
+            digest: result.digest,
+            status: result.effects?.status,
+            created: result.objectChanges?.filter(change => change.type === 'created')
+                .map(obj => ({
+                    type: obj.objectType,
+                    id: obj.objectId
+                }))
+        });
+
+        return result;
+    } catch (error) {
+        logger.error('Token and pool creation test failed:', error);
+        throw error;
+    }
+}
 async function createPoolAndToken() {
     try {
 
@@ -169,12 +201,39 @@ async function createPoolAndToken() {
             amount: BigInt(10 * 10 ** 10),
             recipient: address  // Make sure this matches the type definition
         }), keypair)
-        console.log("minted tokens",tokenTx)
+        console.log("minted tokens", tokenTx)
         const metadataFields = (metadataObject.data?.content as any)?.fields
         metadataObject.data?.content.dataType
 
         const poolTx = await executeTransaction(suiClient, await transactionBuilder(["create_pool"], await buildPoolAndTokenParams(suiClient, address, metadataObject)), keypair)
-        console.log("poolTx",poolTx)
+        console.log("poolTx", poolTx)
+        //const liquidityTx = await executeTransaction(suiClient, await transactionBuilder(["add_liquidity"], await buildPoolAndTokenParams(suiClient, address, metadataObject)), keypair)
+        console.log("poolTx", poolTx);
+
+        // Extract pool ID
+        const poolMetadata = poolTx.objectChanges?.find(
+            change => change.type === 'created' && change.objectType?.includes('::pool::Pool')
+        ) as { type: 'created', objectId: string } | undefined;
+
+        if (!poolMetadata) {
+            throw new Error('Pool ID not found in transaction effects');
+        }
+        const liquidParams = await buildPoolAndTokenParams(suiClient, address, metadataObject)
+        // Now use this pool ID for add_liquidity
+        console.log("POOL OBJECT ID>>>>>>>>>>>>>>>", poolMetadata.objectId)
+        const liquidityTx = await executeTransaction(
+            suiClient,
+            await transactionBuilder(
+                ["add_liquidity"],
+                {
+                    ...liquidParams,
+                    pool: poolMetadata.objectId,
+                    amount: 1 * 10 ** 6,
+                }
+            ),
+            keypair
+        );
+        console.log('liquidityTx', liquidityTx)
 
     } catch (error) {
         logger.error('Pool creation failed:', { error });
@@ -196,5 +255,5 @@ if (require.main === module) {
         });
 }
 
-export { deployToken, createPool, createPoolAndToken };
+export { deployToken, createPool, createPoolAndToken, createPoolAndTokenTest };
 

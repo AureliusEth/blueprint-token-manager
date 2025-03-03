@@ -17,7 +17,7 @@ export type CreatePoolParams = {
     current_sqrt_price: bigint;
     creation_fee: string;       // Object ID of the creation fee coin
     amount: bigint;
-    coin_type_b?: string;       // The Move type of coin B (defaults to USDC if not provided)
+    coin_b_type?: string;       // The Move type of coin B (defaults to USDC if not provided)
 };
 
 export type DepositPoolParams = {
@@ -32,6 +32,6 @@ export type DepositPoolParams = {
     coin_b_max: number;         // Maximum amount of coin B to create_pooluse
     is_fixed_a: boolean;        // Whether coin A amount is fixed
     coin_type_a: string;        // Type of coin A
-    coin_type_b: string;        // Type of coin B
+    coin_b_type: string;        // Type of coin B
 };
 

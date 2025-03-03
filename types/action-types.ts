@@ -28,8 +28,9 @@ export type CreatePoolParams = {
     fee_basis_points: bigint;
     current_sqrt_price: bigint;
     creation_fee: string;       // Object ID of the creation fee coin
-    amount: bigint;
-    coin_type_b?: string;       // The Move type of coin B (defaults to USDC if not provided)
+    amount_a: bigint;           // Updated: amount for coin A
+    amount_b: bigint;           // Added: amount for coin B
+    coin_b_type?: string;       // The Move type of coin B (defaults to USDC if not provided)
 };
 
 export type CreatePoolOnlyParams = {
@@ -47,8 +48,18 @@ export type CreatePoolOnlyParams = {
     fee_basis_points: bigint;
     current_sqrt_price: bigint;
     creation_fee: string;
-    amount: bigint;
+    amount_a: bigint;
+    amount_b: bigint;
     protocol_config_id: string;
+};
+
+export type addLiquidityParams = {
+    pool: string;                // Object ID of Pool
+    coin_a: string;             // Object ID of coin A
+    coin_b: string;             // Object ID of coin B
+    coin_a_type: string;        // Move type of coin A
+    coin_b_type: string;        // Move type of coin B
+    amount: bigint;             // Amount of liquidity to add
 };
 
 export type TokenResult = {

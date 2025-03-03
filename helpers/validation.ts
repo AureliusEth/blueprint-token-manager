@@ -1,4 +1,4 @@
-import { CreateTokenParams, CreatePoolParams } from '../types/action-types';
+import { CreateTokenParams, CreatePoolParams, addLiquidityParams } from '../types/action-types';
 import { logger } from '../utils/logger';
 
 export function validateTokenParams(params: CreateTokenParams): void {
@@ -20,7 +20,7 @@ export function validateTokenParams(params: CreateTokenParams): void {
 
 export function validateTokenAndPoolParams(params: CreateTokenParams & Partial<CreatePoolParams>): void {
     validateTokenParams(params);
-    
+
     const poolValidations: [boolean, string][] = [
         [!params.pool_icon_url, 'Pool icon URL is required'],
         [!params.coin_b, 'Coin B object ID is required'],
@@ -34,6 +34,24 @@ export function validateTokenAndPoolParams(params: CreateTokenParams & Partial<C
     for (const [condition, message] of poolValidations) {
         if (condition) {
             logger.error('Pool validation failed:', { params, message });
+            throw new Error(message);
+        }
+    }
+}
+
+export function validateAddLiquidityParams(params: addLiquidityParams): void {
+    const validations: [boolean, string][] = [
+        [!params.coin_a, 'Coin A object ID is required'],
+        [!params.coin_b, 'Coin B object ID is required'],
+        [!params.coin_a_type, 'Coin A type is required'],
+        [!params.coin_b_type, 'Coin B type is required'],
+        [!params.pool, 'Pool object ID is required'],
+        [!params.amount, 'Amount is required'],
+    ];
+
+    for (const [condition, message] of validations) {
+        if (condition) {
+            logger.error('Validation failed:', { params, message });
             throw new Error(message);
         }
     }

@@ -1,6 +1,6 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createPoolOnly, createToken, createTokenAndPool, mintToken } from '../helpers/action-helper';
-import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams } from '../types/action-types';
+import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity } from '../helpers/action-helper';
+import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, addLiquidityParams } from '../types/action-types';
 import { NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
 
@@ -37,7 +37,7 @@ export const transactionBuilder = async (
                     await mintToken(
                         tx,
                         params.executor_address,
-                        params  
+                        params
                     );
                     break;
                 case 'create_pool':
@@ -52,6 +52,20 @@ export const transactionBuilder = async (
                         tx,
                         config.EXECUTOR_ADDRESS,
                         params
+                    );
+                    break;
+                case 'create_test_token_and_pool':
+                    await createTestTokenAndPool(
+                        tx,
+                        config.EXECUTOR_ADDRESS,
+                        params
+                    );
+                    break;
+                case 'add_liquidity':
+                    await addLiquidity(
+                        tx,
+                        config.EXECUTOR_ADDRESS,
+                        params,
                     );
                     break;
                 default:
