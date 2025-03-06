@@ -1,0 +1,18 @@
+[profile.default]
+src = "contracts"
+out = "out"
+libs = ["lib"]
+via_ir = true
+optimizer = true
+optimizer_runs = 200
+
+[profile.default.model]
+# Default for files not matching other patterns
+solc = "0.8.26"
+
+# Specify different versions for different paths
+[profile.default.model.solc_version]
+"contracts/uniswap/*.sol" = "0.8.26"
+"lib/v4-core/src/*.sol" = "0.8.26"
+"lib/v4-periphery/src/*.sol" = "0.8.26"
+"contracts/token/*.sol" = "0.8.28"

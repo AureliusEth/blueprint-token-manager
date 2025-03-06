@@ -1,5 +1,5 @@
 import { ObjectRef, Transaction, TransactionResult } from '@mysten/sui/transactions';
-import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata, mintTokenParams, addLiquidityParams, CreateEVMTokenParams, } from '../types/action-types';
+import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata, mintTokenParams, addLiquidityParams, CreateEVMTokenParams } from '../types/action-types';
 import { COIN_METADATA, NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
 import { validateTokenParams, validateTokenAndPoolParams, validateAddLiquidityParams } from './validation';
@@ -12,6 +12,7 @@ import { setupMainnetConnection } from '../utils/connection';
 import { generateCustomPoolToken, generateCustomToken } from '../constants/dyanmic-token-contract';
 import { ContractTransaction, ethers } from 'ethers';
 import { TokenFactory__factory } from '../types/contracts';
+import { createUniswapPool, addLiquidityToPool, initializePool, createPoolAndAddLiquidity } from './uniswap-helper';
 
 const execAsync = promisify(exec);
 
@@ -427,6 +428,23 @@ export const prepareEVMTokenMint = async (
         );
     } catch (error) {
         logger.error('Error preparing EVM token mint:', { error, params });
+        throw error;
+    }
+};
+
+export const createEVMPool = async (
+    provider: ethers.Provider,
+    positionManager: string,
+    params: PoolParams
+): Promise<ContractTransaction> => {
+    try {
+        return await createPoolAndAddLiquidity(
+            provider,
+            positionManager,
+            params
+        );
+    } catch (error) {
+        logger.error('Error preparing EVM pool creation:', { error, params });
         throw error;
     }
 };

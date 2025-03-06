@@ -1,5 +1,5 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity, createEVMToken, prepareEVMTokenMint } from '../helpers/action-helper';
+import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity, createEVMToken, prepareEVMTokenMint, createEVMPool } from '../helpers/action-helper';
 import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, addLiquidityParams } from '../types/action-types';
 import { EVM_NETWORK_CONFIG, NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
@@ -81,6 +81,14 @@ export const transactionBuilder = async (
                         config.EXECUTOR_ADDRESS,
                         params,
                     );
+                    break;
+                case 'evm_create_pool':
+                    const poolTxs = await createEVMPool(
+                        evm_config.PROVIDER,
+                        evm_config.UNISWAP_FACTORY_ADDRESS,
+                        params
+                    );
+                    return poolTxs[0]; // Return first transaction, others will need to be executed after
                     break;
                 default:
                     throw new Error(`Unrecognized intent: ${intent}`);

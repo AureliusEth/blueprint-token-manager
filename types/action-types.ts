@@ -77,3 +77,16 @@ export interface CreateEVMTokenParams {
     tokenFactoryAddress: string;
 }
 
+export interface CreateUniswapPoolParams {
+    currency0: string;
+    currency1: string;
+    fee: number;
+    tickSpacing: number;
+    hooks: string;
+    sqrtPriceX96: string;
+    token0Amount: string;
+    token1Amount: string;
+    tickLower: number;
+    tickUpper: number;
+}
+
