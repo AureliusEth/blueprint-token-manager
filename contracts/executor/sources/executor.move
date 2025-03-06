@@ -168,17 +168,9 @@ let upper_tick_bits: u32 = 6932;       // For 6932 as i32 (2x price)        // G
         
         // Get range from config but use smaller test values for now
         let (_min_tick, _max_tick) = config::get_tick_range(protocol_config);
-        let min_tick = i32::from_u32(100);  // Small test value
-        let max_tick = i32::from_u32(200);  // Small test value
         let tick_spacing_i32 = i32::from_u32(1);
-        
-        // Adjust ticks to avoid boundary issues
-        let lower_tick = i32::add(i32::mul(i32::div(min_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
-        let upper_tick = i32::sub(i32::mul(i32::div(max_tick, tick_spacing_i32), tick_spacing_i32), tick_spacing_i32);
-        
-
-let lower_tick_bits: u32 = 4294922296; // Wider negative range
-let upper_tick_bits: u32 = 45000;      // Wider positive range
+        let lower_tick_bits: u32 = 4294922296; // Wider negative range
+        let upper_tick_bits: u32 = 45000;      // Wider positive range
 
         // Create pool and get pool object
 

@@ -1,19 +1,21 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity } from '../helpers/action-helper';
+import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity, createEVMToken, prepareEVMTokenMint } from '../helpers/action-helper';
 import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, addLiquidityParams } from '../types/action-types';
-import { NETWORK_CONFIG } from '../config/constants';
+import { EVM_NETWORK_CONFIG, NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
+import { ContractTransaction, ethers } from 'ethers';
 
 export const transactionBuilder = async (
     intents: string[],  // Array of intent strings
     params: any,        // Single params object containing all needed params
     network: string = 'MAINNET'
-): Promise<Transaction> => {
+): Promise<Transaction | ContractTransaction >  => {
     try {
         const tx = new Transaction();
         const config = NETWORK_CONFIG[network];
+        const evm_config = EVM_NETWORK_CONFIG[network];
 
-        if (!config) {
+        if (!config && !evm_config) {
             throw new Error(`Invalid network: ${network}`);
         }
 
@@ -31,6 +33,18 @@ export const transactionBuilder = async (
                         tx,
                         config.EXECUTOR_ADDRESS,
                         params  // Each helper will extract what it needs
+                    );
+                    break;
+                case 'evm_create_token':
+                    return await createEVMToken(
+                        evm_config.PROVIDER,
+                        evm_config.EXECUTOR_ADDRESS,
+                        params  
+                    );
+                case 'evm_mint_token':
+                    await prepareEVMTokenMint(
+                        evm_config.PROVIDER,
+                        params  
                     );
                     break;
                 case 'mint_token':

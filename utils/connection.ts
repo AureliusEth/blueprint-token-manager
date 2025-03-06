@@ -4,6 +4,9 @@ import { Transaction } from '@mysten/sui/transactions';
 import { logger } from './logger';
 import { NETWORK_CONFIG, COIN_METADATA } from '../config/constants';
 import { CreateTokenParams, CreatePoolParams, CreatePoolOnlyParams, mintTokenParams } from '../types/action-types';
+import { ContractTransaction } from 'ethers';
+import { Wallet } from 'ethers';
+import * as ethers from 'ethers';
 
 export async function setupMainnetConnection() {
     try {
@@ -33,39 +36,60 @@ export async function setupMainnetConnection() {
     }
 }
 
-export async function executeTransaction(suiClient: SuiClient, tx: Transaction, keypair: Ed25519Keypair) {
-    const signedTx = await suiClient.signAndExecuteTransaction({
-        transaction: tx,
-        signer: keypair,
-        options: {
-            showEffects: true,
-            showObjectChanges: true,
-            showEvents: true
-        },
-        requestType: 'WaitForLocalExecution'  // Wait for local execution
-    });
+export const executeTransaction = async (
+    suiClient: SuiClient | undefined ,
+    tx: Transaction | ContractTransaction,
+    keypair: Ed25519Keypair | undefined
+) => {
+    if (tx instanceof Transaction) {
+        // Keep original Sui transaction handling
+        const signedTx = await suiClient.signAndExecuteTransaction({
+            transaction: tx,
+            signer: keypair,
+            options: {
+                showEffects: true,
+                showObjectChanges: true,
+                showEvents: true
+            },
+            requestType: 'WaitForLocalExecution'
+        });
 
-    // Wait for finality
-    const finalTx = await suiClient.waitForTransaction({
-        digest: signedTx.digest,
-        options: {
-            showEffects: true,
-            showObjectChanges: true,
-            showEvents: true
+        // Wait for finality
+        const finalTx = await suiClient.waitForTransaction({
+            digest: signedTx.digest,
+            options: {
+                showEffects: true,
+                showObjectChanges: true,
+                showEvents: true
+            }
+        });
+
+        return finalTx;
+    } else {
+        // Handle EVM transaction
+        if (!process.env.EVM_TEST_PRIV_KEY || !process.env.ARB_RPC_URL) {
+            throw new Error("EVM_TEST_PRIV_KEY or ARB_RPC_URL not found in .env");
         }
-    });
 
-    return finalTx;
-}
+        const wallet = new Wallet(
+            process.env.EVM_TEST_PRIV_KEY,
+            new ethers.JsonRpcProvider(process.env.ARB_RPC_URL)
+        );
+
+        const signedTx = await wallet.sendTransaction(tx);
+        return await signedTx.wait();
+    }
+};
+
 export function buildTokenParams(suiClient: SuiClient, address: string) {
     return {
-        name: "HELP Token",
-        symbol: "HELP",
-        decimal: 6,
+        name: "HELP Token", // comes from Agent
+        symbol: "HELP", // Comes from Agent but agent should come up with a good suggestion
+        decimal: 6, // we could do a default or a usecase based suggestion
         description: "Test Token for Pool Creation",
-        initialSupply: 1_000_000_000,
-        iconUrl: "https://test.com/icon.png",
-        recipientAddress: address
+        initialSupply: 1_000_000_000, // dependant on usecase so for agent to come up with simply pre prompt wtih specific values for usecases
+        iconUrl: "https://test.com/icon.png", // given by user add an upload image button to front end
+        recipientAddress: address //front end
     }
 }
 
@@ -91,11 +115,11 @@ export async function buildPoolAndTokenParams(
             }),
             suiClient.getCoins({
                 owner: address,
-                coinType: coinTypeA
+                coinType: coinTypeA // users created ocin in the create token and pool flow in nomrla flow this can be any token
             }),
             suiClient.getCoins({
                 owner: address,
-                coinType: COIN_METADATA.USDC.type
+                coinType: COIN_METADATA.USDC.type // a user specified coin
             })
         ]);
 
@@ -112,7 +136,7 @@ export async function buildPoolAndTokenParams(
 
         // Find USDC coin with sufficient balance
         const usdcCoin = usdcCoins.data.find(coin =>
-            BigInt(coin.balance) > BigInt(5_000_000)  // Adjust based on your needs
+            BigInt(coin.balance) > BigInt(3_000_000)  // Adjust based on your needs
         );
 
         if (!suiCoin) {
@@ -129,27 +153,27 @@ export async function buildPoolAndTokenParams(
         /////// TODO get the users created token and provide liq
         const tokenPriceA = 1;
         const tokenPriceB = 1;
-        const price = BigInt(Math.sqrt(tokenPriceA*tokenPriceB))
+        const price = BigInt(Math.sqrt(tokenPriceA * tokenPriceB))
         // Use a more conservative sqrt_price that's well within bounds
-        const sqrt_price = BigInt("18446744073709551616") // This represents ~0.989949 in Q64.96
+        const sqrt_price = BigInt("18446744073709551616") // This represents ~0.989949 in Q64.64 figure // supllied by the llm who will ascertain a good starting price for the asset
         return {
-            coin_a: userCoin.coinObjectId,
-            coin_a_type: coinTypeA,
-            coin_a_symbol: metadataFields.symbol,
-            coin_a_decimals: metadataFields.decimals,
-            coin_a_url: "https://something.com",
+            coin_a: userCoin.coinObjectId, //front-end
+            coin_a_type: coinTypeA,  //front-end
+            coin_a_symbol: metadataFields.symbol,   //front-end
+            coin_a_decimals: metadataFields.decimals,  //front-end
+            coin_a_url: "https://something.com",  //front-end
             coin_b: usdcCoin.coinObjectId,  // Use fresh USDC coin
-            coin_b_type: COIN_METADATA.USDC.type,
-            coin_b_symbol: COIN_METADATA.USDC.symbol,
-            coin_b_decimals: COIN_METADATA.USDC.decimals,
-            pool_icon_url: "https:something.com",
-            tick_spacing: BigInt(1),
-            fee_basis_points: BigInt(3000),
-            current_sqrt_price: sqrt_price,
-            creation_fee: suiCoin.coinObjectId,
+            coin_b_type: COIN_METADATA.USDC.type,  //front-end
+            coin_b_symbol: COIN_METADATA.USDC.symbol,  //front-end
+            coin_b_decimals: COIN_METADATA.USDC.decimals,  //front-end
+            pool_icon_url: "https:something.com",  //front-end
+            tick_spacing: BigInt(1),  //front-end
+            fee_basis_points: BigInt(3000),  //front-end
+            current_sqrt_price: sqrt_price,  //front-end
+            creation_fee: suiCoin.coinObjectId,  //front-end
             amount_a: BigInt(1 * 10 ** 6),  // 10 tokens with 6 decimals
             amount_b: BigInt(1 * 10 ** 6),  // 10 USDC with 6 decimals
-            protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID
+            protocol_config_id: NETWORK_CONFIG.MAINNET.PROTOCOL_CONFIG_ID // our constants or possibly better to query front end depends if we want to run a suiClient here
         };
     } catch (error) {
         logger.error('Error in buildPoolAndTokenParams:', { error });
@@ -255,7 +279,7 @@ export async function buildTokenAndPoolTestParams(suiClient: SuiClient, address:
         initialSupply: 1_000_000_000,
         iconUrl: "https://test.com/icon.png",
         recipientAddress: address,
-        
+
         // Pool parameters
         pool_icon_url: "https://test.com/pool-icon.png",
         tick_spacing: BigInt(1),

@@ -1,4 +1,5 @@
 import { Transaction, TransactionResult } from '@mysten/sui/transactions';
+import { ethers } from 'ethers';
 
 export type TokenMetadata = {
     symbol: string;
@@ -65,4 +66,14 @@ export type addLiquidityParams = {
 export type TokenResult = {
     tx: Transaction;
     tokenDetails: TransactionResult;
-}; 
+};
+
+export interface CreateEVMTokenParams {
+    name: string;
+    symbol: string;
+    decimals: number;
+    initialSupply: string;
+    owner: string;
+    tokenFactoryAddress: string;
+}
+

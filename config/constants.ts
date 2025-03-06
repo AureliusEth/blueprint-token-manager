@@ -34,3 +34,21 @@ export const NETWORK_CONFIG = {
     CLOCK_ID: string;
     USDC_TYPE?: string;
 }>; 
+
+export const EVM_NETWORK_CONFIG = {
+    MAINNET: {
+        EXECUTOR_ADDRESS: "0x7391f797ff48b8645a69aab59d44f87e93bc7188eb5f613a9c77612a266fa70d",
+        PROVIDER: "https://eth.llamarpc.com",
+    },
+    TESTNET: {
+        EXECUTOR_ADDRESS: "0x...", // Add testnet address
+        PROVIDER: "https://endpoints.omniatech.io/v1/eth/sepolia/public", // Add testnet config
+    },
+    ARBITRUM: {
+        EXECUTOR_ADDRESS: "0xd34C78cc042C82e85e557E791B672f7fb7489326", // Add testnet address
+        PROVIDER: "https://arbitrum.llamarpc.com", // Add testnet config
+    }
+} as const satisfies Record<string, {
+    EXECUTOR_ADDRESS: string;
+    PROVIDER: string;
+}>; 

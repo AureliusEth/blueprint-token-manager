@@ -1,5 +1,5 @@
 import { ObjectRef, Transaction, TransactionResult } from '@mysten/sui/transactions';
-import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata, mintTokenParams, addLiquidityParams } from '../types/action-types';
+import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata, mintTokenParams, addLiquidityParams, CreateEVMTokenParams, } from '../types/action-types';
 import { COIN_METADATA, NETWORK_CONFIG } from '../config/constants';
 import { logger } from '../utils/logger';
 import { validateTokenParams, validateTokenAndPoolParams, validateAddLiquidityParams } from './validation';
@@ -10,6 +10,8 @@ import { promisify } from 'util';
 import { SuiClient } from '@mysten/sui/client';
 import { setupMainnetConnection } from '../utils/connection';
 import { generateCustomPoolToken, generateCustomToken } from '../constants/dyanmic-token-contract';
+import { ContractTransaction, ethers } from 'ethers';
+import { TokenFactory__factory } from '../types/contracts';
 
 const execAsync = promisify(exec);
 
@@ -52,7 +54,6 @@ export const createToken = async (
 
         tx.setGasBudget(50000000);  // Higher budget for package publish
         process.chdir(contractPath);
-
         try {
             const { modules, dependencies } = await buildPackage();
             //adds a publish tx to the PTB
@@ -359,6 +360,73 @@ export const createPoolOnly = async (
         });
     } catch (error) {
         logger.error('Error preparing pool:', { error, params });
+        throw error;
+    }
+}
+
+
+export const createEVMToken = async (
+    provider: ethers.Provider,
+    executorAddress: string,
+    params: CreateEVMTokenParams
+): Promise<ContractTransaction> => {
+    try {
+        // Validate inputs
+        if (!ethers.isAddress(executorAddress)) {
+            throw new Error('Invalid token factory address');
+        }
+        if (!ethers.isAddress(params.owner)) {
+            throw new Error('Invalid owner address');
+        }
+
+        // Create contract instance
+        const tokenFactory = TokenFactory__factory.connect(
+            params.tokenFactoryAddress,
+            provider
+        );
+
+        // Populate the transaction
+        const unsignedTx = await tokenFactory.createToken.populateTransaction(
+            params.name,
+            params.symbol,
+            params.decimals,
+            ethers.parseUnits(params.initialSupply, params.decimals),
+            params.owner
+        );
+
+        logger.info('EVM token creation transaction populated', {
+            name: params.name,
+            symbol: params.symbol,
+            factoryAddress: executorAddress
+        });
+
+        return unsignedTx;
+    } catch (error) {
+        logger.error('Error preparing EVM token creation:', { error, params });
+        throw error;
+    }
+};
+
+// Optional: Add helper for minting additional tokens
+export const prepareEVMTokenMint = async (
+    provider: ethers.Provider,
+    params: any,
+): Promise<ethers.ContractTransaction> => {
+    try {
+        // Create contract instance using the CustomToken ABI
+        const tokenContract = new ethers.Contract(
+            params.tokenAddress,
+            ['function mint(address to, uint256 amount)'],
+            provider
+        );
+
+        // Populate the mint transaction
+        return await tokenContract.mint.populateTransaction(
+            params.to,
+            ethers.parseUnits(params.amount, params.decimals)
+        );
+    } catch (error) {
+        logger.error('Error preparing EVM token mint:', { error, params });
         throw error;
     }
 };
