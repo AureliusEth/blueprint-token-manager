@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.26;
-
-import {PositionManager} from "../../lib/v4-periphery/src/PositionManager.sol";
-import {PoolKey} from "../../lib/v4-core/src/types/PoolKey.sol";
-import {Currency, CurrencyLibrary} from "../../lib/v4-core/src/types/Currency.sol";
-import {IPoolManager} from "../../lib/v4-core/src/interfaces/IPoolManager.sol";
-import {TickMath} from "../../lib/v4-core/src/libraries/TickMath.sol";
-import {LiquidityAmounts} from "../../lib/v4-periphery/src/libraries/LiquidityAmounts.sol";
-import {IERC20} from "../../lib/openzeppelin-contracts/contracts/interfaces/IERC20.sol";
-import {Actions} from "../../lib/v4-periphery/src/libraries/Actions.sol";
-import {IHooks} from "../../lib/v4-core/src/interfaces/IHooks.sol";
-import {PoolId} from "lib/v4-core/src/types/PoolId.sol";
+import {PositionManager} from "@uniswap/v4-periphery/src/PositionManager.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
+import {LiquidityAmounts} from "@uniswap/v4-periphery/src/libraries/LiquidityAmounts.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 
 contract PoolCreator {
     using CurrencyLibrary for Currency;

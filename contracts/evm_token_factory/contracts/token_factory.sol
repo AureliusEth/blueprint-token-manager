@@ -14,7 +14,7 @@ contract TokenFactory is Ownable {
         address owner
     ) Ownable(owner) {
     }
-    event TokenCreated(address tokenAddress, string name, string symbol, uint8 decimals, uint256 initialSupply);
+    event TokenCreated(address indexed tokenAddress, string name, string symbol, uint8 decimals, uint256 initialSupply);
     
     /**
      * @dev Creates a new ERC20 token

@@ -11,8 +11,8 @@ import { SuiClient } from '@mysten/sui/client';
 import { setupMainnetConnection } from '../utils/connection';
 import { generateCustomPoolToken, generateCustomToken } from '../constants/dyanmic-token-contract';
 import { ContractTransaction, ethers } from 'ethers';
-import { TokenFactory__factory } from '../types/contracts';
-import { createUniswapPool, addLiquidityToPool, initializePool, createPoolAndAddLiquidity } from './uniswap-helper';
+import { TokenFactory__factory, PoolCreator__factory } from '../types/contracts';
+import { createUniswapPool, addLiquidityToPool, initializePool, createPoolAndAddLiquidity, calculatePoolParameters } from './uniswap-helper';
 
 const execAsync = promisify(exec);
 
@@ -382,7 +382,7 @@ export const createEVMToken = async (
 
         // Create contract instance
         const tokenFactory = TokenFactory__factory.connect(
-            params.tokenFactoryAddress,
+            executorAddress,
             provider
         );
 
@@ -432,19 +432,4 @@ export const prepareEVMTokenMint = async (
     }
 };
 
-export const createEVMPool = async (
-    provider: ethers.Provider,
-    positionManager: string,
-    params: PoolParams
-): Promise<ContractTransaction> => {
-    try {
-        return await createPoolAndAddLiquidity(
-            provider,
-            positionManager,
-            params
-        );
-    } catch (error) {
-        logger.error('Error preparing EVM pool creation:', { error, params });
-        throw error;
-    }
-};
+

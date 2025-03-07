@@ -1,149 +1,143 @@
-import { ethers } from 'ethers';
-import { Currency } from '@uniswap/sdk-core';
+import { Pool, TickMath, encodeSqrtRatioX96, nearestUsableTick } from '@uniswap/v3-sdk';
+import { Token, Currency, CurrencyAmount, Percent } from '@uniswap/sdk-core';
+import { ethers, ContractTransaction } from 'ethers';
+import { PoolCreator__factory } from '../types/contracts';
+import JSBI from '@uniswap/sdk-core/node_modules/jsbi';
 
-interface PoolKey {
-    currency0: Currency;
-    currency1: Currency;
+interface CreatePoolParams {
+    tokenA: {
+        address: string;
+        decimals: number;
+        symbol: string;
+    };
+    tokenB: {
+        address: string;
+        decimals: number;
+        symbol: string;
+    };
     fee: number;
     tickSpacing: number;
-    hooks: string;
-}
-
-interface PoolParams {
-    currency0: Currency;
-    currency1: Currency;
-    lpFee?: number;          // Default 0.30%
-    tickSpacing?: number;    // Default 60
-    startingPrice?: bigint;  // Default sqrt(1) * 2^96
-    token0Amount: bigint;
+    hooks?: string;  // v4 hooks address
+    sqrtPriceX96: bigint;  // Initial sqrt price
+    token0Amount: bigint;   // Initial liquidity amounts
     token1Amount: bigint;
-    tickLower?: number;      // Default -600
-    tickUpper?: number;      // Default 600
-    hooks?: string;          // Optional hooks contract
+    tickLower: number;      // Price range ticks
+    tickUpper: number;
+    price: number;
 }
 
-export interface CreateUniswapPoolParams {
-    currency0: string;
-    currency1: string;
+// Add this interface for the simpler params
+export interface PoolPriceParams {
+    tokenA: {
+        address: string;
+        decimals: number;
+        symbol: string;
+    };
+    tokenB: {
+        address: string;
+        decimals: number;
+        symbol: string;
+    };
     fee: number;
     tickSpacing: number;
-    hooks: string;
-    sqrtPriceX96: string;
-    token0Amount: string;
-    token1Amount: string;
-    tickLower: number;
-    tickUpper: number;
+    price: number;
 }
 
-export async function createPoolAndAddLiquidity(
-    provider: ethers.Provider,
-    positionManager: string,
-    params: PoolParams
-): Promise<ethers.ContractTransaction> {
-    try {
-        // Default values
-        const lpFee = params.lpFee ?? 3000; // 0.30%
-        const tickSpacing = params.tickSpacing ?? 60;
-        const startingPrice = params.startingPrice ?? BigInt('79228162514264337593543950336');
-        const tickLower = params.tickLower ?? -600;
-        const tickUpper = params.tickUpper ?? 600;
-        const hooks = params.hooks ?? ethers.ZeroAddress;
+export const createEVMPool = async (
+    provider: string,
+    executorAddress: string,
+    params: CreatePoolParams
+): Promise<ContractTransaction> => {
+    console.log("PROVIDER<<<<<<<<<<",provider)
+    const wallet = new ethers.Wallet(
+        process.env.EVM_TEST_PRIV_KEY!,
+        new ethers.JsonRpcProvider(provider)
+    );
 
-        // Create pool key
-        const poolKey: PoolKey = {
-            currency0: params.currency0,
-            currency1: params.currency1,
-            fee: lpFee,
-            tickSpacing: tickSpacing,
-            hooks: hooks
-        };
+    const poolCreator = PoolCreator__factory.connect(executorAddress, wallet);
 
-        // Encode initialization parameters
-        const initializeParams = ethers.AbiCoder.defaultAbiCoder.encode(
-            ['tuple(address,address,uint24,int24,address)', 'uint160', 'bytes'],
-            [
-                [
-                    poolKey.currency0.address,
-                    poolKey.currency1.address,
-                    poolKey.fee,
-                    poolKey.tickSpacing,
-                    poolKey.hooks
-                ],
-                startingPrice,
-                '0x' // Empty hook data
-            ]
-        );
+    return await poolCreator.createPoolAndAddLiquidity.populateTransaction(
+        params.tokenA.address,
+        params.tokenB.address,
+        params.fee,
+        params.tickSpacing,
+        params.hooks || ethers.ZeroAddress,
+        params.sqrtPriceX96,
+        params.token0Amount,
+        params.token1Amount,
+        params.tickLower,
+        params.tickUpper,
+        { value: params.token1Amount }
+    );
+};
 
-        // Encode mint parameters
-        const mintParams = encodeMintParams(
-            poolKey,
-            tickLower,
-            tickUpper,
-            params.token0Amount,
-            params.token1Amount
-        );
+export const calculatePoolParameters = (params: PoolPriceParams) => {
+    // Create Token instances
+    const tokenA = new Token(
+        1, // chainId
+        params.tokenA.address,
+        params.tokenA.decimals,
+        params.tokenA.symbol
+    );
 
-        // Create multicall transaction
-        const positionManagerInterface = new ethers.Interface([
-            'function multicall(bytes[] calldata data) payable returns (bytes[] memory results)',
-            'function initializePool(tuple(address,address,uint24,int24,address), uint160, bytes) returns (address)',
-            'function modifyLiquidity(bytes, bytes[], uint256) returns (bytes[] memory)'
-        ]);
+    const tokenB = new Token(
+        1,
+        params.tokenB.address,
+        params.tokenB.decimals,
+        params.tokenB.symbol
+    );
 
-        const multicallData = [
-            positionManagerInterface.encodeFunctionData('initializePool', [poolKey, startingPrice, '0x']),
-            positionManagerInterface.encodeFunctionData('modifyLiquidity', [mintParams.actions, mintParams.params, Math.floor(Date.now() / 1000) + 60])
-        ];
+    // Convert price to sqrt price
+    const sqrtPriceX96 = encodeSqrtRatioX96(
+        JSBI.BigInt((Number(params.price) * Math.pow(10, params.tokenA.decimals)).toString()),
+        JSBI.BigInt(Math.pow(10, params.tokenB.decimals).toString())
+    );
 
-        return {
-            to: positionManager,
-            data: positionManagerInterface.encodeFunctionData('multicall', [multicallData]),
-            value: params.currency0.isNative ? params.token0Amount : BigInt(0)
-        } as ethers.ContractTransaction;
+    // Calculate nearest usable ticks
+    const baseTickSpacing = params.tickSpacing;
+    const currentTick = TickMath.getTickAtSqrtRatio(sqrtPriceX96);
+    
+    const lowerTick = nearestUsableTick(
+        currentTick - 100 * baseTickSpacing, 
+        baseTickSpacing
+    );
+    
+    const upperTick = nearestUsableTick(
+        currentTick + 100 * baseTickSpacing,
+        baseTickSpacing
+    );
 
-    } catch (error) {
-        throw new Error(`Failed to create pool and add liquidity: ${error.message}`);
-    }
-}
+    return {
+        sqrtPriceX96: sqrtPriceX96.toString(),
+        currentTick,
+        lowerTick,
+        upperTick,
+        tickSpacing: baseTickSpacing
+    };
+};
 
-function encodeMintParams(
-    poolKey: PoolKey,
-    tickLower: number,
-    tickUpper: number,
-    amount0: bigint,
-    amount1: bigint
-) {
-    // Actions.MINT_POSITION = 1, Actions.SETTLE_PAIR = 20
-    const actions = ethers.concat([
-        ethers.toBeArray(1),
-        ethers.toBeArray(20)
-    ]);
+export const convertSqrtPriceX96ToPrice = (
+    sqrtPriceX96: JSBI,
+    token0Decimals: number,
+    token1Decimals: number
+): number => {
+    const price = JSBI.multiply(JSBI.multiply(sqrtPriceX96, sqrtPriceX96), JSBI.BigInt(10 ** token1Decimals));
+    const baseUnits = JSBI.multiply(JSBI.BigInt(2 ** 192), JSBI.BigInt(10 ** token0Decimals));
+    return Number(JSBI.divide(price, baseUnits)) / 10 ** token1Decimals;
+};
 
-    const params = [
-        ethers.AbiCoder.defaultAbiCoder.encode(
-            ['tuple(address,address,uint24,int24,address)', 'int24', 'int24', 'uint256', 'uint256', 'uint256', 'address', 'bytes'],
-            [
-                [
-                    poolKey.currency0.address,
-                    poolKey.currency1.address,
-                    poolKey.fee,
-                    poolKey.tickSpacing,
-                    poolKey.hooks
-                ],
-                tickLower,
-                tickUpper,
-                amount0,
-                amount0 + BigInt(1), // amount0Max
-                amount1 + BigInt(1), // amount1Max
-                ethers.ZeroAddress,
-                '0x' // Empty hook data
-            ]
-        ),
-        ethers.AbiCoder.defaultAbiCoder.encode(
-            ['address', 'address'],
-            [poolKey.currency0.address, poolKey.currency1.address]
-        )
-    ];
+export const createUniswapPool = async () => {
+    // Implementation
+};
 
-    return { actions, params };
-} 
+export const addLiquidityToPool = async () => {
+    // Implementation
+};
+
+export const initializePool = async () => {
+    // Implementation
+};
+
+export const createPoolAndAddLiquidity = async () => {
+    // Implementation
+}; 

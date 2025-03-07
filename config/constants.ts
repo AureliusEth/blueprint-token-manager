@@ -37,18 +37,23 @@ export const NETWORK_CONFIG = {
 
 export const EVM_NETWORK_CONFIG = {
     MAINNET: {
-        EXECUTOR_ADDRESS: "0x7391f797ff48b8645a69aab59d44f87e93bc7188eb5f613a9c77612a266fa70d",
+        TOKEN_FACTORY: "0xd34C78cc042C82e85e557E791B672f7fb7489326", // Add testnet address
+        POOL_CREATOR: "",
         PROVIDER: "https://eth.llamarpc.com",
     },
     TESTNET: {
-        EXECUTOR_ADDRESS: "0x...", // Add testnet address
-        PROVIDER: "https://endpoints.omniatech.io/v1/eth/sepolia/public", // Add testnet config
+        TOKEN_FACTORY: "0x4141B95fd906dbcC0cB5CbE2E2f76372AF4716Fe", // Add testnet address
+        POOL_CREATOR: "0x2af146940ef3798766945Ca04A0BC19d16252B03",
+        PROVIDER: "https://ethereum-sepolia-rpc.publicnode.com", // Add testnet config
     },
     ARBITRUM: {
-        EXECUTOR_ADDRESS: "0xd34C78cc042C82e85e557E791B672f7fb7489326", // Add testnet address
-        PROVIDER: "https://arbitrum.llamarpc.com", // Add testnet config
+        TOKEN_FACTORY: "0xd489CD96c7C8C3383c9b7729fE88e7Ba2c59d4dA", // Add testnet address
+        POOL_CREATOR: "0x2d44A6e213287df21C9AeEC6E55B499AEb26297d",
+        PROVIDER: "https://arbitrum-mainnet.infura.io/v3/5ce3f0a2d7814e3c9da96f8e8ebf4d0c", // Add testnet config
     }
 } as const satisfies Record<string, {
-    EXECUTOR_ADDRESS: string;
+    TOKEN_FACTORY: string;
+    POOL_CREATOR: string;
+    //this will be deprecated for a combined Executor
     PROVIDER: string;
 }>; 

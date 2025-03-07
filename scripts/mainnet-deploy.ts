@@ -7,6 +7,12 @@ import { setupMainnetConnection, executeTransaction, buildPoolOnlyParams, buildT
 import { createToken, mintToken, setTokenMetadata } from '../helpers/action-helper';
 import { SuiClient } from '@mysten/sui/dist/cjs/client';
 import { SuiTransactionBlockResponse } from '@mysten/sui/client';
+import { ethers } from 'ethers';
+import { TokenFactory__factory } from '../types/contracts';
+import { ContractTransaction } from 'ethers';
+import { calculatePoolParameters, PoolPriceParams } from '../helpers/uniswap-helper';
+import { EVM_NETWORK_CONFIG } from '../config/constants';
+import e from 'express';
 
 dotenv.config();
 
@@ -302,9 +308,238 @@ async function deployEVMToken() {
     }
 }
 
+async function deployEVMPool() {
+    try {
+        // Example parameters for pool creation
+        const params = {
+            tokenA: {
+                address: "0x...", // Your token A address
+                decimals: 18,
+                symbol: "TOKA"
+            },
+            tokenB: {
+                address: "0x...", // Your token B address (e.g., USDC)
+                decimals: 6,
+                symbol: "USDC"
+            },
+            fee: 3000, // 0.3%
+            price: 1, // Initial price ratio
+            tickSpacing: 60
+        };
+
+        const tx = await transactionBuilder(
+            ["create_evm_pool"],
+            params,
+            'ARBITRUM'
+        );
+
+        console.log("EVM pool creation transaction built:", tx);
+        const result = await executeTransaction(undefined, tx, undefined);
+        console.log("Pool creation result:", result);
+
+        return result;
+    } catch (error) {
+        logger.error('EVM pool deployment failed:', error);
+        throw error;
+    }
+}
+
+async function createEVMTokenAndPool() {
+    try {
+        // Configuration
+
+        const evm_config = EVM_NETWORK_CONFIG["ARBITRUM"];
+
+        const provider = new ethers.JsonRpcProvider(evm_config.PROVIDER)
+        const wallet = new ethers.Wallet(process.env.EVM_TEST_PRIV_KEY!, provider);
+        
+        // 1. Token parameters
+        const tokenParams = {
+            name: "Example Token",
+            symbol: "EXMP",
+            decimals: 18,
+            initialSupply: "1000000",  // 1 million tokens
+            owner: wallet.address,
+        };
+        
+        // 2. Create token using transaction builder
+        logger.info('Creating EVM token...');
+        const tokenTx = await transactionBuilder(
+            ["evm_create_token"],
+            tokenParams,
+            'ARBITRUM'
+        ) as ContractTransaction;
+        
+        // 3. Execute the transaction
+        const signedTx = await wallet.sendTransaction(tokenTx);
+        logger.info(`Token creation transaction sent: ${signedTx.hash}`);
+        const receipt = await signedTx.wait();
+        
+        // 4. Extract token address from event logs
+        const tokenCreatedEvent = receipt?.logs.find(
+            log => {
+                const isTokenCreated = log.topics[0] === ethers.id('TokenCreated(address,string,string,uint8,uint256)');
+                logger.info('Found log:', { 
+                    topics: log.topics,
+                    data: log.data,
+                    isTokenCreated
+                });
+                return isTokenCreated;
+            }
+        );
+
+        if (!tokenCreatedEvent) {
+            logger.info('Available logs:', receipt?.logs);
+            throw new Error('Token creation event not found in transaction logs');
+        }
+
+        // Parse the event data
+        const iface = new ethers.Interface([
+            'event TokenCreated(address indexed tokenAddress, string name, string symbol, uint8 decimals, uint256 initialSupply)'
+        ]);
+        const parsedLog = iface.parseLog({
+            topics: tokenCreatedEvent.topics,
+            data: tokenCreatedEvent.data
+        });
+
+        const tokenAddress = parsedLog?.args[0];
+        logger.info(`Token created at address: ${tokenAddress}`);
+        
+        // 5. Pool parameters
+        const wethAddress = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1"; // Arbitrum WETH
+        const poolParams: PoolPriceParams = {
+            tokenA: {
+                address: tokenAddress,
+                decimals: Number(tokenParams.decimals),
+                symbol: tokenParams.symbol
+            },
+            tokenB: {
+                address: wethAddress,
+                decimals: 18,  // ETH has 18 decimals
+                symbol: "WETH"
+            },
+            fee: 3000,  // 0.3%
+            tickSpacing: 60,
+            price: 0.0005  // 1 ETH = 2000 tokens
+        };
+        
+        // 6. Calculate pool parameters
+        const calculatedParams = calculatePoolParameters(poolParams);
+        
+        // 7. Create pool with the calculated parameters using transaction builder
+        const fullPoolParams = {
+            ...poolParams,
+            sqrtPriceX96: BigInt(calculatedParams.sqrtPriceX96),
+            token0Amount: BigInt(100 * (10 ** poolParams.tokenA.decimals)),
+            token1Amount: BigInt(0.01 * (10 ** poolParams.tokenB.decimals)), // 0.01 ETH
+            tickLower: calculatedParams.lowerTick,
+            tickUpper: calculatedParams.upperTick,
+            hooks: ethers.ZeroAddress
+        };
+        
+        // Add debug logging
+        logger.info('Pool creation parameters:', {
+            token0: poolParams.tokenA.address,
+            token1: poolParams.tokenB.address,
+            sqrtPriceX96: calculatedParams.sqrtPriceX96,
+            tickLower: calculatedParams.lowerTick,
+            tickUpper: calculatedParams.upperTick,
+            token0Amount: fullPoolParams.token0Amount.toString(),
+            token1Amount: fullPoolParams.token1Amount.toString()
+        });
+        
+        // 8. Approve tokens for pool creation
+        logger.info('Approving tokens for pool creation...');
+        const feeData = await provider.getFeeData();
+        const gasLimit = 500000n; // Conservative estimate
+        
+        const tokenContract = new ethers.Contract(
+            tokenAddress,
+            ['function approve(address spender, uint256 amount) returns (bool)'],
+            wallet
+        );
+        
+        const wethContract = new ethers.Contract(
+            wethAddress,
+            ['function approve(address spender, uint256 amount) returns (bool)'],
+            wallet
+        );
+        
+        // Add gas settings to approval transactions
+        const tokenApproval = await tokenContract.approve.populateTransaction(
+            evm_config.POOL_CREATOR, 
+            ethers.MaxUint256
+        );
+        const wethApproval = await wethContract.approve.populateTransaction(
+            evm_config.POOL_CREATOR, 
+            ethers.MaxUint256
+        );
+        
+        // Send approvals with proper gas settings
+        const tokenApproveTx = await wallet.sendTransaction({
+            ...tokenApproval,
+            gasLimit,
+            maxFeePerGas: feeData.maxFeePerGas! * 2n,
+            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas! * 2n
+        });
+        await tokenApproveTx.wait();
+        
+        const wethApproveTx = await wallet.sendTransaction({
+            ...wethApproval,
+            gasLimit,
+            maxFeePerGas: feeData.maxFeePerGas! * 2n,
+            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas! * 2n
+        });
+        await wethApproveTx.wait();
+        
+        // 9. Create pool using transaction builder
+        logger.info('Creating pool...');
+        const poolTx = await transactionBuilder(
+            ["evm_create_pool"],
+            fullPoolParams,
+            'ARBITRUM'
+        ) as ContractTransaction;
+        
+        // 10. Execute the pool creation transaction
+        const signedPoolTx = await wallet.sendTransaction({
+            ...poolTx,
+            gasLimit: gasLimit * 2n, // Pool creation needs more gas
+            maxFeePerGas: feeData.maxFeePerGas! * 2n,
+            maxPriorityFeePerGas: feeData.maxPriorityFeePerGas! * 2n,
+            value: fullPoolParams.token1Amount // Send ETH for WETH wrapping
+        });
+        logger.info(`Pool creation transaction sent: ${signedPoolTx.hash}`);
+        const poolReceipt = await signedPoolTx.wait();
+        logger.info(`Pool created successfully! Gas used: ${poolReceipt?.gasUsed.toString()}`);
+        
+        // 11. Log the results
+        logger.info('EVM deployment completed successfully!', {
+            token: {
+                address: tokenAddress,
+                name: tokenParams.name,
+                symbol: tokenParams.symbol
+            },
+            pool: {
+                tokenA: poolParams.tokenA.symbol,
+                tokenB: poolParams.tokenB.symbol,
+                fee: poolParams.fee
+            }
+        });
+        
+        return {
+            tokenAddress,
+            tokenTx: signedTx.hash,
+            poolTx: signedPoolTx.hash
+        };
+    } catch (error) {
+        logger.error('EVM token and pool creation failed:', error);
+        throw error;
+    }
+}
+
 // Update the main execution
 if (require.main === module) {
-    deployEVMToken()
+    createEVMTokenAndPool()
         .then(result => {
             logger.info('Token deployment completed:', result);
             process.exit(0);
@@ -315,5 +550,5 @@ if (require.main === module) {
         });
 }
 
-export { deployToken, createPool, createPoolAndToken, createPoolAndTokenTest, deployEVMToken };
+export { deployToken, createPool, createPoolAndToken, createPoolAndTokenTest, deployEVMToken, deployEVMPool, createEVMTokenAndPool };
 
