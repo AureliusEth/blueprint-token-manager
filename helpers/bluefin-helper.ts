@@ -1,6 +1,6 @@
 import { ObjectRef, Transaction, TransactionResult } from '@mysten/sui/transactions';
 import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, TokenMetadata, mintTokenParams, addLiquidityParams, CreateEVMTokenParams } from '../types/action-types';
-import { COIN_METADATA, NETWORK_CONFIG } from '../config/constants';
+import { NETWORK_CONFIG, COIN_METADATA } from '../constants/config/constants';
 import { logger } from '../utils/logger';
 import { validateTokenParams, validateTokenAndPoolParams, validateAddLiquidityParams } from './validation';
 import * as fs from 'fs';
@@ -47,8 +47,8 @@ export const createToken = async (
         validateTokenParams(params);
 
         const currentDir = process.cwd();
-        const contractPath = path.resolve(currentDir, 'contracts/token_factory');
-        const outputPath = path.resolve(currentDir, 'contracts/token_factory/sources/token_factory.move');
+        const contractPath = path.resolve(currentDir, 'contracts/sui/token_factory');
+        const outputPath = path.resolve(currentDir, 'contracts/sui/token_factory/sources/token_factory.move');
         const content = generateCustomToken(params.name, params.decimal, params.symbol, params.description)
         fs.writeFileSync(outputPath, content)
         console.log(`succesfully wrote code to ${outputPath}`)
@@ -295,8 +295,8 @@ export const createTestTokenAndPool = async (
             initialSupply.toString(),
         )
         const currentDir = process.cwd();
-        const contractPath = path.resolve(currentDir, 'contracts/token_pool_factory');
-        const outputPath = path.resolve(currentDir, 'contracts/token_pool_factory/sources/token_factory.move');
+        const contractPath = path.resolve(currentDir, 'contracts/sui/token_pool_factory');
+        const outputPath = path.resolve(currentDir, 'contracts/sui/token_pool_factory/sources/token_factory.move');
         fs.writeFileSync(outputPath, content)
         console.log(`succesfully wrote code to ${outputPath}`)
 
@@ -354,6 +354,8 @@ export const createPoolOnly = async (
                 tx.pure.string(params.pool_icon_url),
                 tx.pure.u32(Number(params.tick_spacing)),
                 tx.pure.u64(Number(params.fee_basis_points)),
+                tx.pure.u32(params.upper_tick_bits),
+                tx.pure.u32(params.lower_tick_bits),
                 tx.pure.u128(params.current_sqrt_price.toString()),
                 tx.pure.u64(Number(params.amount_a)),
                 tx.pure.u64(Number(params.amount_b))

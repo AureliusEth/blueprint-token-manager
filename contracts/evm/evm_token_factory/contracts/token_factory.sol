@@ -32,6 +32,7 @@ contract TokenFactory is Ownable {
         uint256 initialSupply,
         address owner
     ) external returns (address) {
+
         CustomToken newToken = new CustomToken(
             name,
             symbol,

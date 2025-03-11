@@ -1,10 +1,12 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity, createEVMToken, prepareEVMTokenMint } from '../helpers/action-helper';
+import { createPoolOnly, createTestTokenAndPool, createToken, createTokenAndPool, mintToken, addLiquidity, createEVMToken, prepareEVMTokenMint } from '../helpers/bluefin-helper';
 import { CreatePoolParams, CreateTokenParams, CreatePoolOnlyParams, addLiquidityParams } from '../types/action-types';
-import { EVM_NETWORK_CONFIG, NETWORK_CONFIG } from '../config/constants';
+//import { EVM_NETWORK_CONFIG, NETWORK_CONFIG } from '../config/constants';
+
 import { logger } from '../utils/logger';
 import { ContractTransaction, ethers } from 'ethers';
 import { createEVMPool } from '../helpers/uniswap-helper';
+import { EVM_NETWORK_CONFIG, NETWORK_CONFIG } from '../constants/config/constants';
 
 export const transactionBuilder = async (
     intents: string[],  // Array of intent strings

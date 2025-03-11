@@ -2,11 +2,12 @@ import { getFullnodeUrl, SuiClient, SuiObjectResponse } from '@mysten/sui/client
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction } from '@mysten/sui/transactions';
 import { logger } from './logger';
-import { NETWORK_CONFIG, COIN_METADATA } from '../config/constants';
+//import { NETWORK_CONFIG, COIN_METADATA } from '../config/constants';
 import { CreateTokenParams, CreatePoolParams, CreatePoolOnlyParams, mintTokenParams } from '../types/action-types';
 import { ContractTransaction } from 'ethers';
 import { Wallet } from 'ethers';
 import * as ethers from 'ethers';
+import { NETWORK_CONFIG, COIN_METADATA } from '../constants/config/constants';
 
 export async function setupMainnetConnection() {
     try {
@@ -37,7 +38,7 @@ export async function setupMainnetConnection() {
 }
 
 export const executeTransaction = async (
-    suiClient: SuiClient | undefined ,
+    suiClient: SuiClient | undefined,
     tx: Transaction | ContractTransaction,
     keypair: Ed25519Keypair | undefined
 ) => {
@@ -136,7 +137,7 @@ export async function buildPoolAndTokenParams(
 
         // Find USDC coin with sufficient balance
         const usdcCoin = usdcCoins.data.find(coin =>
-            BigInt(coin.balance) > BigInt(3_000_000)  // Adjust based on your needs
+            BigInt(coin.balance) > BigInt(2_000_000)  // Adjust based on your needs
         );
 
         if (!suiCoin) {
@@ -169,6 +170,8 @@ export async function buildPoolAndTokenParams(
             pool_icon_url: "https:something.com",  //front-end
             tick_spacing: BigInt(1),  //front-end
             fee_basis_points: BigInt(3000),  //front-end
+            upper_tick_bits: 45000,     // Wider positive range
+            lower_tick_bits: 4294922296, // Wider negative range
             current_sqrt_price: sqrt_price,  //front-end
             creation_fee: suiCoin.coinObjectId,  //front-end
             amount_a: BigInt(1 * 10 ** 6),  // 10 tokens with 6 decimals
@@ -228,6 +231,8 @@ export async function buildPoolOnlyParams(
             pool_icon_url: "https:something.com",
             tick_spacing: BigInt(1),
             fee_basis_points: BigInt(3000),
+            upper_tick_bits: 45000,     // Wider positive range
+            lower_tick_bits: 4294922296, // Wider negative range
             current_sqrt_price: BigInt("1000000000000000000"), // 1e18, a common value for price 1.0
             creation_fee: suiCoin.coinObjectId,
             amount_a: BigInt(2 * 10 ** 6),  // 10 SUI with 9 decimals

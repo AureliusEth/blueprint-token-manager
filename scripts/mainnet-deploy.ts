@@ -4,14 +4,14 @@ import { transactionBuilder } from '../controllers/action-controller';
 import { logger } from '../utils/logger';
 import { validateEnvironment } from '../helpers/validation';
 import { setupMainnetConnection, executeTransaction, buildPoolOnlyParams, buildTokenParams, buildPoolAndTokenParams, buildTokenAndPoolTestParams } from '../utils/connection';
-import { createToken, mintToken, setTokenMetadata } from '../helpers/action-helper';
+import { createToken, mintToken, setTokenMetadata } from '../helpers/bluefin-helper';
 import { SuiClient } from '@mysten/sui/dist/cjs/client';
 import { SuiTransactionBlockResponse } from '@mysten/sui/client';
 import { ethers } from 'ethers';
 import { TokenFactory__factory } from '../types/contracts';
 import { ContractTransaction } from 'ethers';
 import { calculatePoolParameters, PoolPriceParams } from '../helpers/uniswap-helper';
-import { EVM_NETWORK_CONFIG } from '../config/constants';
+import { EVM_NETWORK_CONFIG } from '../constants/config/constants';
 import e from 'express';
 
 dotenv.config();
@@ -336,8 +336,8 @@ async function deployEVMPool() {
         console.log("EVM pool creation transaction built:", tx);
         const result = await executeTransaction(undefined, tx, undefined);
         console.log("Pool creation result:", result);
-
         return result;
+
     } catch (error) {
         logger.error('EVM pool deployment failed:', error);
         throw error;
@@ -347,9 +347,7 @@ async function deployEVMPool() {
 async function createEVMTokenAndPool() {
     try {
         // Configuration
-
         const evm_config = EVM_NETWORK_CONFIG["ARBITRUM"];
-
         const provider = new ethers.JsonRpcProvider(evm_config.PROVIDER)
         const wallet = new ethers.Wallet(process.env.EVM_TEST_PRIV_KEY!, provider);
         
@@ -539,7 +537,7 @@ async function createEVMTokenAndPool() {
 
 // Update the main execution
 if (require.main === module) {
-    createEVMTokenAndPool()
+    createPoolAndToken()
         .then(result => {
             logger.info('Token deployment completed:', result);
             process.exit(0);

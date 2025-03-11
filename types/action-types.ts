@@ -51,6 +51,8 @@ export type CreatePoolOnlyParams = {
     creation_fee: string;
     amount_a: bigint;
     amount_b: bigint;
+    upper_tick_bits: number;
+    lower_tick_bits: number;
     protocol_config_id: string;
 };
 
